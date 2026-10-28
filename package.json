@@ -1,0 +1,19 @@
+{
+  "name": "graph-app",
+  "module": "server.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun server.ts",
+    "dev": "bun --hot server.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "build": "bun build --compile --target=bun-darwin-arm64 --define process.env.NODE_ENV='\"production\"' server.ts --outfile dist/graph-app"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4"
+  },
+  "peerDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

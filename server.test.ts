@@ -4,45 +4,51 @@ import { createServer } from "./server.ts";
 
 const store = openGraphStore(":memory:");
 const server = createServer(store, 0);
-const url = (path: string) => new URL(path, server.url).href;
 
-const send = (path: string, method: string, body?: unknown) =>
-  fetch(url(path), { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+const send = async (method: string, path: string, body?: unknown) => {
+  const res = await fetch(new URL(path, server.url), {
+    method,
+    headers: { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  return { status: res.status, body: res.status === 204 ? null : await res.json() };
+};
 
 afterAll(() => {
   server.stop(true);
   store.close();
 });
 
-describe("graphs API", () => {
-  test("creates, reads, updates, lists and deletes a graph", async () => {
-    const created = await (await send("/api/graphs", "POST", { name: "pipeline" })).json();
-    expect(created.type).toBe("directional");
-    expect(created.nodes).toHaveLength(1);
+describe("API", () => {
+  test("builds a graph of nodes and edges", async () => {
+    const graph = (await send("POST", "/api/graphs", { name: "people" })).body;
+    const ada = (await send("POST", `/api/graphs/${graph.id}/nodes`, { name: "Ada", labels: ["Person"], position: { x: 0, y: 0 } })).body;
+    const bob = (await send("POST", `/api/graphs/${graph.id}/nodes`, { name: "Bob", properties: { age: 41 } })).body;
+    const knows = await send("POST", `/api/graphs/${graph.id}/edges`, { source: ada.id, target: bob.id, label: "knows", directed: false });
+    expect(knows.status).toBe(200);
 
-    const start = created.nodes[0];
-    const nodes = [
-      { ...start, next: "n2" },
-      { id: "n2", type: "decision", label: "Decide", next: null, routes: [{ key: "done", label: "Done", target: null, stop: true }] },
-    ];
-    const updated = await (await send(`/api/graphs/${created._id}`, "PUT", { name: "pipeline", type: "directional", nodes })).json();
-    expect(updated.nodes[1].routes[0]).toEqual({ key: "done", label: "Done", target: null, stop: true });
+    await send("PUT", `/api/graphs/${graph.id}/positions`, { [bob.id]: { x: 200, y: 40 } });
+    const view = (await send("GET", `/api/graphs/${graph.id}`)).body;
+    expect(view.nodes.map(({ name, position }: { name: string; position: unknown }) => [name, position])).toEqual([
+      ["Ada", { x: 0, y: 0 }],
+      ["Bob", { x: 200, y: 40 }],
+    ]);
+    expect(view.edges[0]).toMatchObject({ label: "knows", directed: false });
 
-    const list = await (await fetch(url("/api/graphs"))).json();
-    expect(list).toEqual([expect.objectContaining({ _id: created._id, nodeCount: 2 })]);
+    const renamed = await send("PATCH", `/api/nodes/${bob.id}`, { name: "Robert" });
+    expect(renamed.body).toMatchObject({ name: "Robert", properties: { age: 41 } });
 
-    expect((await send(`/api/graphs/${created._id}`, "DELETE")).status).toBe(204);
-    expect((await fetch(url(`/api/graphs/${created._id}`))).status).toBe(404);
+    expect((await send("GET", "/api/graphs")).body).toEqual([expect.objectContaining({ nodeCount: 2, edgeCount: 1 })]);
   });
 
-  test("rejects an invalid graph and a duplicate name", async () => {
-    const created = await (await send("/api/graphs", "POST", { name: "unique" })).json();
-    const bad = await send(`/api/graphs/${created._id}`, "PUT", {
-      name: "unique",
-      type: "directional",
-      nodes: [{ id: "a", type: "t", label: "A", next: "a", routes: [] }],
-    });
-    expect(bad.status).toBe(400);
-    expect((await send("/api/graphs", "POST", { name: "unique" })).status).toBe(409);
+  test("returns 400, 404 and 409 with messages", async () => {
+    expect((await send("POST", "/api/nodes", { name: "" })).status).toBe(400);
+    expect((await send("POST", "/api/nodes", { name: "X", properties: { nested: { a: 1 } } })).body.errors).toEqual([
+      "Property nested must be a string, number, boolean or null.",
+    ]);
+    expect((await send("GET", "/api/nodes/missing")).status).toBe(404);
+    await send("POST", "/api/graphs", { name: "dup" });
+    expect((await send("POST", "/api/graphs", { name: "dup" })).status).toBe(409);
+    expect((await send("PUT", "/api/graphs/missing/positions", { a: { x: "1" } })).status).toBe(400);
   });
 });

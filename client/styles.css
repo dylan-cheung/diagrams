@@ -1,0 +1,365 @@
+:root {
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #5d6678;
+  --line: #d9dde5;
+  --accent: #2f5bd3;
+  --accent-soft: #e6ecfb;
+  --edge: #7a8494;
+  --danger: #b23b3b;
+  --danger-soft: #f8e3e3;
+  --node: #ffffff;
+  --chip: #eef1f6;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171d;
+    --panel: #1b1f27;
+    --ink: #e4e8f0;
+    --muted: #97a0b2;
+    --line: #2c3341;
+    --accent: #7d9cf5;
+    --accent-soft: #1e2846;
+    --edge: #8b95a7;
+    --danger: #f08484;
+    --danger-soft: #3a1c1e;
+    --node: #222835;
+    --chip: #2a3140;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px/1.45 var(--font);
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.danger {
+  color: var(--danger);
+}
+
+button.icon {
+  padding: 2px 8px;
+}
+
+input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--bg);
+}
+
+.check input {
+  width: auto;
+}
+
+h1 {
+  font-size: 14px;
+  margin: 0;
+}
+
+h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 320px;
+  height: 100vh;
+}
+
+.sidebar,
+.inspector {
+  background: var(--panel);
+  overflow-y: auto;
+}
+
+.sidebar {
+  border-right: 1px solid var(--line);
+}
+
+.inspector {
+  border-left: 1px solid var(--line);
+  padding: 16px;
+}
+
+.sidebar-section {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.inline-form {
+  display: flex;
+  gap: 6px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.list li > button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 7px 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.list li > button.active {
+  background: var(--accent-soft);
+}
+
+.library-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+}
+
+.library-item > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-item > :last-child {
+  flex-shrink: 0;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.canvas-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.graph-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolbar-actions,
+.row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.errors {
+  margin: 0;
+  padding: 10px 16px 10px 32px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-bottom: 1px solid var(--line);
+}
+
+.canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.empty {
+  color: var(--muted);
+  padding: 24px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.property {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hint {
+  color: var(--muted);
+  margin: 0;
+}
+
+.endpoints {
+  margin: 0;
+  font-weight: 600;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+  margin: 0;
+}
+
+.react-flow {
+  --xy-background-color: var(--bg);
+  --xy-edge-stroke: var(--edge);
+  --xy-edge-stroke-selected: var(--accent);
+  --xy-minimap-background-color: var(--panel);
+  --xy-controls-button-background-color: var(--panel);
+  --xy-controls-button-color: var(--ink);
+}
+
+.entity {
+  background: var(--node);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+}
+
+.entity.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.entity-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entity-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chip {
+  background: var(--chip);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+
+.react-flow__handle.source-handle,
+.react-flow__handle.target-handle {
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border: 2px solid var(--panel);
+}
+
+.react-flow__handle.target-handle {
+  background: var(--edge);
+}
+
+.react-flow__edge.selected .react-flow__edge-path,
+.edge-selected {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.edge-label {
+  position: absolute;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--muted);
+  pointer-events: all;
+}
+
+.edge-label.selected {
+  border-color: var(--accent);
+  color: var(--accent);
+}

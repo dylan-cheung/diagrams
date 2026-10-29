@@ -4,35 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Graphs</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./client/styles.css" />
   </head>
   <body>
-    <div class="app">
-      <aside class="sidebar">
-        <header class="sidebar-head">
-          <h1>Graphs</h1>
-        </header>
-        <form id="new-graph" class="new-graph">
-          <input name="name" placeholder="New graph name" autocomplete="off" required />
-          <button type="submit">Add</button>
-        </form>
-        <ul id="graph-list" class="graph-list"></ul>
-      </aside>
-      <main class="canvas-pane">
-        <div class="toolbar">
-          <div id="graph-title" class="graph-title">No graph selected</div>
-          <div class="toolbar-actions">
-            <span id="dirty" class="dirty" hidden>Unsaved changes</span>
-            <button id="add-node" type="button" disabled>Add node</button>
-            <button id="revert" type="button" disabled>Revert</button>
-            <button id="save" type="button" class="primary" disabled>Save</button>
-          </div>
-        </div>
-        <ul id="errors" class="errors" hidden></ul>
-        <div id="canvas" class="canvas"></div>
-      </main>
-      <aside id="inspector" class="inspector"></aside>
-    </div>
-    <script type="module" src="./app.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="./client/main.tsx"></script>
   </body>
 </html>

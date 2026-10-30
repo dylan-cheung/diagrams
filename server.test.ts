@@ -27,7 +27,7 @@ describe("API", () => {
     const knows = await send("POST", `/api/graphs/${graph.id}/edges`, { source: ada.id, target: bob.id, label: "knows", directed: false });
     expect(knows.status).toBe(200);
 
-    await send("PUT", `/api/graphs/${graph.id}/positions`, { [bob.id]: { x: 200, y: 40 } });
+    expect((await send("PUT", `/api/graphs/${graph.id}/positions`, { [bob.id]: { x: 200, y: 40 } })).status).toBe(204);
     const view = (await send("GET", `/api/graphs/${graph.id}`)).body;
     expect(view.nodes.map(({ name, position }: { name: string; position: unknown }) => [name, position])).toEqual([
       ["Ada", { x: 0, y: 0 }],
@@ -42,13 +42,42 @@ describe("API", () => {
   });
 
   test("returns 400, 404 and 409 with messages", async () => {
-    expect((await send("POST", "/api/nodes", { name: "" })).status).toBe(400);
-    expect((await send("POST", "/api/nodes", { name: "X", properties: { nested: { a: 1 } } })).body.errors).toEqual([
-      "Property nested must be a string, number, boolean or null.",
-    ]);
+    expect((await send("POST", "/api/nodes", { name: " " })).body).toEqual({ errors: ["A node needs a name."] });
+    expect((await send("POST", "/api/nodes", { name: "X", properties: { nested: { a: 1 } } })).body).toEqual({
+      errors: ["properties.nested: Property values must be a string, number, boolean or null."],
+    });
+    expect((await send("GET", "/api/nodes/missing")).body).toEqual({ errors: ["The node does not exist."] });
     expect((await send("GET", "/api/nodes/missing")).status).toBe(404);
     await send("POST", "/api/graphs", { name: "dup" });
     expect((await send("POST", "/api/graphs", { name: "dup" })).status).toBe(409);
     expect((await send("PUT", "/api/graphs/missing/positions", { a: { x: "1" } })).status).toBe(400);
+  });
+});
+
+describe("API docs", () => {
+  test("the OpenAPI spec lists every route", async () => {
+    const spec = (await send("GET", "/openapi.json")).body;
+    expect(spec.openapi).toBe("3.1.0");
+    expect(spec.info.title).toBe("graphs API");
+    expect(Object.keys(spec.paths).sort()).toEqual([
+      "/api/edges",
+      "/api/edges/{id}",
+      "/api/graphs",
+      "/api/graphs/{id}",
+      "/api/graphs/{id}/edges",
+      "/api/graphs/{id}/edges/{edgeId}",
+      "/api/graphs/{id}/nodes",
+      "/api/graphs/{id}/nodes/{nodeId}",
+      "/api/graphs/{id}/positions",
+      "/api/nodes",
+      "/api/nodes/{id}",
+    ]);
+    expect(Object.keys(spec.components.schemas)).toEqual(expect.arrayContaining(["Node", "Edge", "Graph", "GraphView", "Error"]));
+  });
+
+  test("serves the docs page", async () => {
+    const res = await fetch(new URL("/docs", server.url));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("/openapi.json");
   });
 });

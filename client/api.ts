@@ -1,13 +1,6 @@
-import type {
-  EdgeInput,
-  Graph,
-  GraphEdge,
-  GraphNode,
-  GraphSummary,
-  GraphView,
-  NodeInput,
-  Position,
-} from "../model.ts";
+import { hc, type ClientResponse } from "hono/client";
+import type { AppType } from "../api.ts";
+import type { EdgeInput, NodeInput, Position } from "../model.ts";
 
 export class ApiError extends Error {
   constructor(readonly errors: string[]) {
@@ -15,42 +8,45 @@ export class ApiError extends Error {
   }
 }
 
-const request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
-  const res = await fetch(path, {
-    method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (res.status === 204) return undefined as T;
-  const data = await res.json();
-  if (!res.ok) throw new ApiError((data as { errors?: string[] }).errors ?? [`Request failed with ${res.status}.`]);
-  return data as T;
+type Success<R> = R extends ClientResponse<infer T, infer S, string> ? (S extends 200 ? T : S extends 204 ? undefined : never) : never;
+
+const unwrap = async <R extends ClientResponse<unknown, number, string>>(request: Promise<R>): Promise<Success<R>> => {
+  const res = await request;
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { errors?: string[] };
+    throw new ApiError(body.errors ?? [`Request failed with ${res.status}.`]);
+  }
+  return (res.status === 204 ? undefined : await res.json()) as Success<R>;
 };
 
+const client = hc<AppType>("/");
+const nodes = client.api.nodes;
+const edges = client.api.edges;
+const graphs = client.api.graphs;
+
 export const api = {
-  listGraphs: () => request<GraphSummary[]>("GET", "/api/graphs"),
-  createGraph: (name: string) => request<Graph>("POST", "/api/graphs", { name }),
-  renameGraph: (id: string, name: string) => request<Graph>("PATCH", `/api/graphs/${id}`, { name }),
-  deleteGraph: (id: string) => request<void>("DELETE", `/api/graphs/${id}`),
-  view: (id: string) => request<GraphView>("GET", `/api/graphs/${id}`),
+  listGraphs: () => unwrap(graphs.$get()),
+  createGraph: (name: string) => unwrap(graphs.$post({ json: { name } })),
+  renameGraph: (id: string, name: string) => unwrap(graphs[":id"].$patch({ param: { id }, json: { name } })),
+  deleteGraph: (id: string) => unwrap(graphs[":id"].$delete({ param: { id } })),
+  view: (id: string) => unwrap(graphs[":id"].$get({ param: { id } })),
 
-  listNodes: () => request<GraphNode[]>("GET", "/api/nodes"),
-  updateNode: (id: string, input: Partial<NodeInput>) => request<GraphNode>("PATCH", `/api/nodes/${id}`, input),
-  deleteNode: (id: string) => request<void>("DELETE", `/api/nodes/${id}`),
+  listNodes: () => unwrap(nodes.$get()),
+  updateNode: (id: string, input: Partial<NodeInput>) => unwrap(nodes[":id"].$patch({ param: { id }, json: input })),
+  deleteNode: (id: string) => unwrap(nodes[":id"].$delete({ param: { id } })),
 
-  updateEdge: (id: string, input: Partial<EdgeInput>) => request<GraphEdge>("PATCH", `/api/edges/${id}`, input),
-  deleteEdge: (id: string) => request<void>("DELETE", `/api/edges/${id}`),
+  updateEdge: (id: string, input: Partial<EdgeInput>) => unwrap(edges[":id"].$patch({ param: { id }, json: input })),
+  deleteEdge: (id: string) => unwrap(edges[":id"].$delete({ param: { id } })),
 
-  createNodeInGraph: (graphId: string, input: NodeInput, position: Position | null) =>
-    request<GraphNode>("POST", `/api/graphs/${graphId}/nodes`, { ...input, position }),
-  addNodeToGraph: (graphId: string, nodeId: string, position: Position | null) =>
-    request<GraphView>("PUT", `/api/graphs/${graphId}/nodes/${nodeId}`, { position }),
-  removeNodeFromGraph: (graphId: string, nodeId: string) =>
-    request<void>("DELETE", `/api/graphs/${graphId}/nodes/${nodeId}`),
-  moveNodes: (graphId: string, positions: Record<string, Position>) =>
-    request<void>("PUT", `/api/graphs/${graphId}/positions`, positions),
-  createEdgeInGraph: (graphId: string, input: EdgeInput) =>
-    request<GraphEdge>("POST", `/api/graphs/${graphId}/edges`, input),
-  removeEdgeFromGraph: (graphId: string, edgeId: string) =>
-    request<void>("DELETE", `/api/graphs/${graphId}/edges/${edgeId}`),
+  createNodeInGraph: (id: string, input: NodeInput, position: Position | null) =>
+    unwrap(graphs[":id"].nodes.$post({ param: { id }, json: { ...input, position } })),
+  addNodeToGraph: (id: string, nodeId: string, position: Position | null) =>
+    unwrap(graphs[":id"].nodes[":nodeId"].$put({ param: { id, nodeId }, json: { position } })),
+  removeNodeFromGraph: (id: string, nodeId: string) =>
+    unwrap(graphs[":id"].nodes[":nodeId"].$delete({ param: { id, nodeId } })),
+  moveNodes: (id: string, positions: Record<string, Position>) =>
+    unwrap(graphs[":id"].positions.$put({ param: { id }, json: positions })),
+  createEdgeInGraph: (id: string, input: EdgeInput) => unwrap(graphs[":id"].edges.$post({ param: { id }, json: input })),
+  removeEdgeFromGraph: (id: string, edgeId: string) =>
+    unwrap(graphs[":id"].edges[":edgeId"].$delete({ param: { id, edgeId } })),
 };

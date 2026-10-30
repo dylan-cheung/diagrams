@@ -1,6 +1,6 @@
-# Graph app
+# graphs
 
-A local macOS app to keep and edit graphs. It runs a Bun server on `127.0.0.1`, opens a React Flow editor in your browser, and stores everything in SQLite.
+A local macOS app to keep and edit graphs. It runs a Bun server (Hono) on `127.0.0.1`, opens a React Flow editor in your browser, and stores everything in SQLite.
 
 ## Model
 
@@ -23,15 +23,15 @@ bun install
 bun start
 ```
 
-The app opens at http://127.0.0.1:4848. The database is at `~/Library/Application Support/graph-app/graph.sqlite`.
+The app opens at http://127.0.0.1:4848.
 
 | Variable | Default | Use |
 |---|---|---|
 | `PORT` | `4848` | Server port |
-| `GRAPH_DB` | `~/Library/Application Support/graph-app/graph.sqlite` | Database file |
+| `GRAPH_DB` | `~/Library/Application Support/graphs/graphs.sqlite` | Database file |
 | `OPEN_BROWSER` | on | Set `0` to not open the browser |
 
-`bun run build` makes one binary, `dist/graph-app`, that holds the server and the UI.
+`bun run build` makes one binary, `dist/graphs`, that holds the server and the UI.
 
 ## Use
 
@@ -43,19 +43,12 @@ The app opens at http://127.0.0.1:4848. The database is at `~/Library/Applicatio
 
 ## API
 
-| Method | Path | Body |
-|---|---|---|
-| `GET`, `POST` | `/api/nodes` | `{ name, labels?, properties? }` |
-| `GET`, `PATCH`, `DELETE` | `/api/nodes/:id` | |
-| `GET`, `POST` | `/api/edges` | `{ source, target, directed?, label?, properties? }` |
-| `GET`, `PATCH`, `DELETE` | `/api/edges/:id` | |
-| `GET`, `POST` | `/api/graphs` | `{ name }` |
-| `GET`, `PATCH`, `DELETE` | `/api/graphs/:id` | `GET` returns `{ graph, nodes, edges }` |
-| `POST` | `/api/graphs/:id/nodes` | Create a node in the graph: `{ name, labels?, properties?, position? }` |
-| `PUT`, `DELETE` | `/api/graphs/:id/nodes/:nodeId` | Add an existing node (and its edges to nodes already in the graph), or remove it |
-| `PUT` | `/api/graphs/:id/positions` | `{ [nodeId]: { x, y } }` |
-| `POST` | `/api/graphs/:id/edges` | Create an edge in the graph |
-| `PUT`, `DELETE` | `/api/graphs/:id/edges/:edgeId` | Add an existing edge, or remove it |
+The API docs are generated from the code. With the app running, open:
+
+- http://127.0.0.1:4848/docs for the interactive reference (Scalar)
+- http://127.0.0.1:4848/openapi.json for the OpenAPI 3.1 spec
+
+Each route in `api.ts` is defined with the Zod schemas in `schemas.ts`. The same schemas validate requests, give the TypeScript types, generate the spec, and type the browser client (`hono/client`), so the docs cannot drift from the code. The docs page loads the Scalar viewer from a CDN, so it needs an internet connection.
 
 ## Check
 

@@ -21,7 +21,7 @@ afterAll(() => {
 
 describe("API", () => {
   test("builds a graph of nodes and edges", async () => {
-    const graph = (await send("POST", "/api/graphs", { name: "people" })).body;
+    const graph = (await send("POST", "/api/graphs", { name: "people", description: "Who knows whom." })).body;
     const ada = (await send("POST", `/api/graphs/${graph.id}/nodes`, { name: "Ada", labels: ["Person"], position: { x: 0, y: 0 } })).body;
     const bob = (await send("POST", `/api/graphs/${graph.id}/nodes`, { name: "Bob", properties: { age: 41 } })).body;
     const knows = await send("POST", `/api/graphs/${graph.id}/edges`, { source: ada.id, target: bob.id, label: "knows", directed: false });
@@ -48,8 +48,12 @@ describe("API", () => {
     });
     expect((await send("GET", "/api/nodes/missing")).body).toEqual({ errors: ["The node does not exist."] });
     expect((await send("GET", "/api/nodes/missing")).status).toBe(404);
-    await send("POST", "/api/graphs", { name: "dup" });
-    expect((await send("POST", "/api/graphs", { name: "dup" })).status).toBe(409);
+    await send("POST", "/api/graphs", { name: "dup", description: "First." });
+    expect((await send("POST", "/api/graphs", { name: "dup", description: "Second." })).status).toBe(409);
+    expect((await send("POST", "/api/graphs", { name: "no purpose" })).status).toBe(400);
+    expect((await send("POST", "/api/graphs", { name: "blank purpose", description: " " })).body).toEqual({
+      errors: ["A graph needs a description of its purpose."],
+    });
     expect((await send("PUT", "/api/graphs/missing/positions", { a: { x: "1" } })).status).toBe(400);
   });
 });

@@ -6,6 +6,7 @@ import {
   type EdgeInput,
   type Graph,
   type GraphEdge,
+  type GraphInput,
   type GraphNode,
   type GraphSummary,
   type GraphView,
@@ -27,7 +28,7 @@ type EdgeRow = {
   updated_at: string;
 };
 
-type GraphRow = { id: string; name: string; created_at: string; updated_at: string };
+type GraphRow = { id: string; name: string; description: string; created_at: string; updated_at: string };
 
 type PlacedNodeRow = NodeRow & { x: number | null; y: number | null };
 
@@ -63,6 +64,7 @@ const toEdge = (row: EdgeRow): GraphEdge => ({
 const toGraph = (row: GraphRow): Graph => ({
   id: row.id,
   name: row.name,
+  description: row.description,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -91,6 +93,7 @@ CREATE INDEX IF NOT EXISTS edges_target ON edges(target);
 CREATE TABLE IF NOT EXISTS graphs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -114,6 +117,8 @@ export const openGraphStore = (path: string) => {
   db.run("PRAGMA journal_mode = WAL");
   db.run("PRAGMA foreign_keys = ON");
   db.exec(SCHEMA);
+  const graphColumns = db.query<{ name: string }, []>("PRAGMA table_info(graphs)").all();
+  if (!graphColumns.some(({ name }) => name === "description")) db.run("ALTER TABLE graphs ADD COLUMN description TEXT NOT NULL DEFAULT ''");
 
   const now = () => new Date().toISOString();
 
@@ -300,19 +305,26 @@ export const openGraphStore = (path: string) => {
         )
         .all()
         .map((row) => ({ ...toGraph(row), nodeCount: row.node_count, edgeCount: row.edge_count })),
-    createGraph: (name: string) => {
+    createGraph: (input: GraphInput) => {
       const id = crypto.randomUUID();
       const stamp = now();
       uniqueName(() =>
         db
-          .query("INSERT INTO graphs (id, name, created_at, updated_at) VALUES ($id, $name, $stamp, $stamp)")
-          .run({ id, name: name.trim(), stamp }),
+          .query("INSERT INTO graphs (id, name, description, created_at, updated_at) VALUES ($id, $name, $description, $stamp, $stamp)")
+          .run({ id, name: input.name.trim(), description: input.description.trim(), stamp }),
       );
       return requireGraph(id);
     },
-    renameGraph: (id: string, name: string) => {
-      requireGraph(id);
-      uniqueName(() => db.query("UPDATE graphs SET name = $name, updated_at = $now WHERE id = $id").run({ id, name: name.trim(), now: now() }));
+    updateGraph: (id: string, input: Partial<GraphInput>) => {
+      const graph = requireGraph(id);
+      uniqueName(() =>
+        db.query("UPDATE graphs SET name = $name, description = $description, updated_at = $now WHERE id = $id").run({
+          id,
+          name: input.name?.trim() ?? graph.name,
+          description: input.description?.trim() ?? graph.description,
+          now: now(),
+        }),
+      );
       return requireGraph(id);
     },
     deleteGraph: (id: string) => {

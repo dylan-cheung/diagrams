@@ -1,8 +1,8 @@
-import { normalizeLabels, type GraphEdge, type GraphNode, type GraphView } from "../model.ts";
-import { PropertiesField, TextField } from "./fields.tsx";
+import { normalizeLabels, type GraphEdge, type GraphInput, type GraphNode, type GraphView } from "../model.ts";
+import { PropertiesField, TextAreaField, TextField } from "./fields.tsx";
 
 export type InspectorActions = {
-  renameGraph: (name: string) => void;
+  updateGraph: (patch: Partial<GraphInput>) => void;
   deleteGraph: () => void;
   updateNode: (id: string, patch: Partial<Pick<GraphNode, "name" | "labels" | "properties">>) => void;
   removeNodeFromGraph: (id: string) => void;
@@ -85,7 +85,13 @@ const EdgeInspector = ({ edge, view, actions }: { edge: GraphEdge; view: GraphVi
 const GraphInspector = ({ view, actions }: { view: GraphView; actions: InspectorActions }) => (
   <section className="section">
     <h2>Graph</h2>
-    <TextField label="Name" value={view.graph.name} onCommit={actions.renameGraph} />
+    <TextField label="Name" value={view.graph.name} onCommit={(name) => actions.updateGraph({ name })} />
+    <TextAreaField
+      label="Purpose"
+      placeholder="What is this graph for?"
+      value={view.graph.description}
+      onCommit={(description) => actions.updateGraph({ description })}
+    />
     <p className="hint">
       {view.nodes.length} nodes and {view.edges.length} edges. Drag from a dot on one node to a dot on another node to add an edge. Drag to a dot on the same node to add a loop. Select a node or an edge to edit it.
     </p>

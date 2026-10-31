@@ -7,7 +7,8 @@ import {
   EdgePatch,
   ErrorBody,
   Graph,
-  GraphNameInput,
+  GraphInput,
+  GraphPatch,
   GraphSummary,
   GraphView,
   Node,
@@ -148,8 +149,16 @@ export const createApi = (store: GraphStore) => {
       (c) => c.json(store.listGraphs(), 200),
     )
     .openapi(
-      route({ method: "post", path: "/api/graphs", tags: tag.graphs, summary: "Create a graph", request: body(GraphNameInput), responses: { 200: json(Graph, "The new, empty graph.") } }),
-      (c) => c.json(store.createGraph(c.req.valid("json").name), 200),
+      route({
+        method: "post",
+        path: "/api/graphs",
+        tags: tag.graphs,
+        summary: "Create a graph",
+        description: "A graph needs a name and a description of its purpose.",
+        request: body(GraphInput),
+        responses: { 200: json(Graph, "The new, empty graph.") },
+      }),
+      (c) => c.json(store.createGraph(c.req.valid("json")), 200),
     )
     .openapi(
       route({
@@ -167,11 +176,12 @@ export const createApi = (store: GraphStore) => {
         method: "patch",
         path: "/api/graphs/{id}",
         tags: tag.graphs,
-        summary: "Rename a graph",
-        request: { params: IdParams, ...body(GraphNameInput) },
-        responses: { 200: json(Graph, "The renamed graph.") },
+        summary: "Update a graph",
+        description: "Changes its name, its description, or both.",
+        request: { params: IdParams, ...body(GraphPatch) },
+        responses: { 200: json(Graph, "The updated graph.") },
       }),
-      (c) => c.json(store.renameGraph(c.req.valid("param").id, c.req.valid("json").name), 200),
+      (c) => c.json(store.updateGraph(c.req.valid("param").id, c.req.valid("json")), 200),
     )
     .openapi(
       route({
@@ -296,7 +306,7 @@ export const createApi = (store: GraphStore) => {
     openapi: "3.1.0",
     info: {
       title: "graphs API",
-      version: "3.0.0",
+      version: "4.0.0",
       description:
         "A labeled property graph. Nodes and edges are shared entities; a graph is a named subgraph that holds nodes, their positions, and edges.",
     },

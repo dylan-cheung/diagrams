@@ -43,7 +43,13 @@ export const Edge = z
   .openapi("Edge");
 
 export const Graph = z
-  .object({ id: Id, name: z.string().openapi({ example: "people" }), createdAt: Timestamp, updatedAt: Timestamp })
+  .object({
+    id: Id,
+    name: z.string().openapi({ example: "people" }),
+    description: z.string().openapi({ example: "Who works with whom on the payments team." }),
+    createdAt: Timestamp,
+    updatedAt: Timestamp,
+  })
   .openapi("Graph");
 
 export const GraphSummary = Graph.extend({ nodeCount: z.number().int(), edgeCount: z.number().int() }).openapi("GraphSummary");
@@ -76,7 +82,14 @@ export const EdgeInput = z
 
 export const EdgePatch = EdgeInput.partial().openapi("EdgePatch");
 
-export const GraphNameInput = z.object({ name: Name("A graph needs a name.") }).openapi("GraphNameInput");
+export const GraphInput = z
+  .object({
+    name: Name("A graph needs a name."),
+    description: Name("A graph needs a description of its purpose.").openapi({ example: "Who works with whom on the payments team." }),
+  })
+  .openapi("GraphInput");
+
+export const GraphPatch = GraphInput.partial().openapi("GraphPatch");
 
 export const PlaceNodeInput = z.object({ position: Position.nullable().optional() }).openapi("PlaceNodeInput");
 
@@ -99,3 +112,4 @@ export type PlacedNode = z.infer<typeof PlacedNode>;
 export type GraphView = z.infer<typeof GraphView>;
 export type NodeInput = z.infer<typeof NodeInput>;
 export type EdgeInput = z.infer<typeof EdgeInput>;
+export type GraphInput = z.infer<typeof GraphInput>;

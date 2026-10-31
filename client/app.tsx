@@ -18,6 +18,7 @@ export const App = () => {
   const [selection, setSelection] = useState<Selection>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [newGraphName, setNewGraphName] = useState("");
+  const [newGraphDescription, setNewGraphDescription] = useState("");
   const [search, setSearch] = useState("");
 
   const loadView = useCallback(async (graphId: string) => {
@@ -82,9 +83,10 @@ export const App = () => {
 
   const createGraph = async (event: FormEvent) => {
     event.preventDefault();
-    const graph = await run(() => api.createGraph(newGraphName), graphId);
+    const graph = await run(() => api.createGraph({ name: newGraphName, description: newGraphDescription }), graphId);
     if (graph != null) {
       setNewGraphName("");
+      setNewGraphDescription("");
       openGraph(graph.id);
     }
   };
@@ -93,7 +95,7 @@ export const App = () => {
     graphId == null
       ? null
       : {
-          renameGraph: (name) => void run(() => api.renameGraph(graphId, name)),
+          updateGraph: (patch) => void run(() => api.updateGraph(graphId, patch)),
           deleteGraph: () => void run(() => api.deleteGraph(graphId), null),
           updateNode: (id, patch) => void run(() => api.updateNode(id, patch)),
           removeNodeFromGraph: (id) => void run(() => api.removeNodeFromGraph(graphId, id)),
@@ -141,8 +143,15 @@ export const App = () => {
       <aside className="sidebar">
         <section className="sidebar-section">
           <h1>Graphs</h1>
-          <form className="inline-form" onSubmit={createGraph}>
+          <form className="graph-form" onSubmit={createGraph}>
             <input placeholder="New graph name" value={newGraphName} onChange={(e) => setNewGraphName(e.target.value)} required />
+            <textarea
+              placeholder="What is this graph for?"
+              rows={2}
+              value={newGraphDescription}
+              onChange={(e) => setNewGraphDescription(e.target.value)}
+              required
+            />
             <button type="submit">Add</button>
           </form>
           <ul className="list">
@@ -150,6 +159,7 @@ export const App = () => {
               <li key={graph.id}>
                 <button type="button" className={graph.id === graphId ? "active" : undefined} onClick={() => openGraph(graph.id)}>
                   <span>{graph.name}</span>
+                  {graph.description !== "" && <span className="description">{graph.description}</span>}
                   <span className="meta">
                     {graph.nodeCount} nodes · {graph.edgeCount} edges
                   </span>

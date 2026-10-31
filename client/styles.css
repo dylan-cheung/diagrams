@@ -49,7 +49,8 @@ body,
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
   color: inherit;
 }
@@ -79,7 +80,8 @@ button.icon {
   padding: 2px 8px;
 }
 
-input {
+input,
+textarea {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--line);
@@ -134,9 +136,23 @@ h2 {
   border-bottom: 1px solid var(--line);
 }
 
-.inline-form {
+.graph-form {
   display: flex;
+  flex-direction: column;
   gap: 6px;
+}
+
+.graph-form button {
+  align-self: flex-end;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.description {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .list {

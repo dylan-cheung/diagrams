@@ -29,6 +29,39 @@ export const TextField = ({
   );
 };
 
+export const TextAreaField = ({
+  label,
+  value,
+  onCommit,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onCommit: (value: string) => void;
+  placeholder?: string;
+}) => {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  const commit = () => {
+    if (text !== value) onCommit(text);
+  };
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <textarea
+        rows={3}
+        value={text}
+        placeholder={placeholder}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setText(value);
+        }}
+      />
+    </label>
+  );
+};
+
 type Row = { key: string; value: string };
 
 const toRows = (properties: Properties): Row[] =>

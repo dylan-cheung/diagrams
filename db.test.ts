@@ -1,4 +1,8 @@
+import { Database } from "bun:sqlite";
 import { beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { StoreError, openGraphStore, type GraphStore } from "./db.ts";
 
 let store: GraphStore;
@@ -40,8 +44,8 @@ describe("nodes and edges", () => {
 
 describe("graphs", () => {
   test("a graph is a subgraph of shared nodes and edges with its own positions", () => {
-    const one = store.createGraph("one");
-    const two = store.createGraph("two");
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const two = store.createGraph({ name: "two", description: "Test graph two." });
     const a = store.createNodeInGraph(one.id, { name: "A" }, { x: 10, y: 20 });
     const b = store.createNodeInGraph(one.id, { name: "B" }, null);
     const edge = store.createEdgeInGraph(one.id, { source: a.id, target: b.id });
@@ -57,8 +61,8 @@ describe("graphs", () => {
   });
 
   test("removing a node from a graph removes its edges from that graph only", () => {
-    const one = store.createGraph("one");
-    const two = store.createGraph("two");
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const two = store.createGraph({ name: "two", description: "Test graph two." });
     const a = store.createNodeInGraph(one.id, { name: "A" }, null);
     const b = store.createNodeInGraph(one.id, { name: "B" }, null);
     store.createEdgeInGraph(one.id, { source: a.id, target: b.id });
@@ -72,7 +76,7 @@ describe("graphs", () => {
   });
 
   test("an edge needs both nodes in the graph", () => {
-    const one = store.createGraph("one");
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
     const a = store.createNodeInGraph(one.id, { name: "A" }, null);
     const outside = store.createNode({ name: "Outside" });
     expect(() => store.createEdgeInGraph(one.id, { source: a.id, target: outside.id })).toThrow(
@@ -83,7 +87,7 @@ describe("graphs", () => {
   });
 
   test("moving an edge endpoint out of a graph drops it from that graph", () => {
-    const one = store.createGraph("one");
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
     const a = store.createNodeInGraph(one.id, { name: "A" }, null);
     const b = store.createNodeInGraph(one.id, { name: "B" }, null);
     const outside = store.createNode({ name: "Outside" });
@@ -93,7 +97,7 @@ describe("graphs", () => {
   });
 
   test("deleting a graph keeps its nodes and edges", () => {
-    const one = store.createGraph("one");
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
     const a = store.createNodeInGraph(one.id, { name: "A" }, null);
     store.createEdgeInGraph(one.id, { source: a.id, target: a.id });
     store.deleteGraph(one.id);
@@ -103,7 +107,26 @@ describe("graphs", () => {
   });
 
   test("graph names are unique", () => {
-    store.createGraph("one");
-    expect(() => store.createGraph("one")).toThrow("A graph with this name already exists.");
+    store.createGraph({ name: "one", description: "Test graph one." });
+    expect(() => store.createGraph({ name: "one", description: "Test graph one." })).toThrow("A graph with this name already exists.");
+  });
+
+  test("a graph keeps a description of its purpose", () => {
+    const one = store.createGraph({ name: "one", description: " Why one exists. " });
+    expect(one.description).toBe("Why one exists.");
+    const updated = store.updateGraph(one.id, { description: "A new purpose." });
+    expect(updated).toMatchObject({ name: "one", description: "A new purpose." });
+    expect(store.listGraphs()[0]).toMatchObject({ description: "A new purpose." });
+  });
+
+  test("adds the description column to a database made before it existed", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "graphs-")), "old.sqlite");
+    const old = new Database(path, { create: true });
+    old.run("CREATE TABLE graphs (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)");
+    old.run("INSERT INTO graphs VALUES ('g1', 'legacy', '2026-10-29T00:00:00.000Z', '2026-10-29T00:00:00.000Z')");
+    old.close();
+    const migrated = openGraphStore(path);
+    expect(migrated.listGraphs()[0]).toMatchObject({ name: "legacy", description: "" });
+    migrated.close();
   });
 });

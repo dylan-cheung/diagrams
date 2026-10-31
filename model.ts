@@ -4,6 +4,7 @@ export type {
   EdgeInput,
   Graph,
   GraphEdge,
+  GraphInput,
   GraphNode,
   GraphSummary,
   GraphView,

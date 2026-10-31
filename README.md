@@ -10,7 +10,7 @@ The app uses the labeled property graph model of ISO GQL (ISO/IEC 39075). In gra
 |---|---|---|
 | Node | `id`, `name`, `labels[]`, `properties{}` | The core entity. A node does not store its edges. |
 | Edge | `id`, `source`, `target`, `directed`, `label`, `properties{}` | Its own entity. Deleting a node deletes its edges. |
-| Graph | `id`, `name` + its nodes (with `x`, `y`) and edges | A named subgraph. Nodes and edges are shared, so one node can be in many graphs with a different position in each. A graph can include an edge only if it includes both nodes. |
+| Graph | `id`, `name`, `description` + its nodes (with `x`, `y`) and edges | A named subgraph. Nodes and edges are shared, so one node can be in many graphs with a different position in each. A graph can include an edge only if it includes both nodes. The description says what the graph is for. It is required when you create a graph. |
 
 Property values are strings, numbers, booleans or `null`.
 
@@ -35,7 +35,7 @@ The app opens at http://127.0.0.1:4848.
 
 ## Use
 
-- Add a graph on the left. Add nodes with **Add node**, or add existing nodes from the **Node library**.
+- Add a graph on the left with a name and a description of its purpose. Edit both in the inspector. Add nodes with **Add node**, or add existing nodes from the **Node library**.
 - Drag from a dot on one node to a dot on another node to add an edge. Drag to the other dot on the same node to add a loop.
 - Select a node or an edge to edit it in the inspector. **Remove from graph** keeps it in the library; **Delete everywhere** deletes it from every graph.
 - Press Delete or Backspace to remove the selection from the graph.

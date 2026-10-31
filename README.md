@@ -11,8 +11,17 @@ The app uses the labeled property graph model of ISO GQL (ISO/IEC 39075). In gra
 | Node | `id`, `name`, `description`, `labels[]`, `properties{}` | The core entity. A node does not store its edges. The description is optional. |
 | Edge | `id`, `source`, `target`, `directed`, `label`, `properties{}` | Its own entity. Deleting a node deletes its edges. |
 | Graph | `id`, `name`, `description` + its nodes (with `x`, `y`) and edges | A named subgraph. Nodes and edges are shared, so one node can be in many graphs with a different position in each. A graph can include an edge only if it includes both nodes. The description says what the graph is for. It is required when you create a graph. |
+| Version | `graphId`, `version`, `hash`, `publishedAt`, `view` | A published copy of a graph that does not change. `view` holds the graph, its nodes with positions, and its edges as they were at publish time. Versions stay after the graph is deleted. |
 
 Property values are strings, numbers, booleans or `null`.
+
+### Published versions
+
+Apps that run a graph, for example a voice app that walks a decision tree, must run a published version, not the editable graph. Each run records `graphId` and `version`, so you can see later the exact graph that made each decision. A copy of the full graph is necessary because nodes are shared: an edit to a node for one graph also changes every other graph that holds it.
+
+- **Publish** (in the inspector, or `POST /api/graphs/{id}/versions`) saves version `n + 1`. If nothing changed since the latest version, it returns that version. Positions do not count as a change.
+- `GET /api/graphs/{id}/versions/{version}` returns one version. Use `latest` for the newest.
+- `hash` is a SHA-256 of the graph content (name, description, nodes and edges, without positions and timestamps).
 
 Not supported: hyperedges (one edge with more than two nodes), nested nodes, and schemas that limit which labels can connect.
 

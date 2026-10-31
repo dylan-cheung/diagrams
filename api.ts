@@ -10,6 +10,8 @@ import {
   GraphInput,
   GraphPatch,
   GraphSummary,
+  GraphVersion,
+  GraphVersionSummary,
   GraphView,
   Node,
   NodeInGraphInput,
@@ -23,6 +25,12 @@ const pathParam = (name: string) => z.string().openapi({ param: { name, in: "pat
 
 const IdParams = z.object({ id: pathParam("id") });
 const GraphNodeParams = z.object({ id: pathParam("id"), nodeId: pathParam("nodeId") });
+const GraphVersionParams = z.object({
+  id: pathParam("id"),
+  version: z
+    .union([z.literal("latest"), z.coerce.number().int().positive()], { error: "The version must be a positive number or latest." })
+    .openapi({ param: { name: "version", in: "path" }, example: 3 }),
+});
 const GraphEdgeParams = z.object({ id: pathParam("id"), edgeId: pathParam("edgeId") });
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({
@@ -43,7 +51,7 @@ const noContent = { 204: { description: "Done." } };
 const route = <const T extends Parameters<typeof createRoute>[0]>(config: T) =>
   createRoute({ ...config, responses: { ...errors, ...config.responses } });
 
-const tag = { nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"] };
+const tag = { nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"] };
 
 export const createApi = (store: GraphStore) => {
   const app = new OpenAPIHono({
@@ -300,15 +308,55 @@ export const createApi = (store: GraphStore) => {
         store.removeEdgeFromGraph(id, edgeId);
         return c.body(null, 204);
       },
+    )
+    .openapi(
+      route({
+        method: "post",
+        path: "/api/graphs/{id}/versions",
+        tags: tag.versions,
+        summary: "Publish a graph",
+        description:
+          "Saves a copy of the graph, its nodes and its edges that does not change. If nothing changed since the latest version, returns that version.",
+        request: { params: IdParams },
+        responses: { 200: json(GraphVersion, "The published version.") },
+      }),
+      (c) => c.json(store.publish(c.req.valid("param").id), 200),
+    )
+    .openapi(
+      route({
+        method: "get",
+        path: "/api/graphs/{id}/versions",
+        tags: tag.versions,
+        summary: "List the published versions of a graph",
+        description: "Versions stay after the graph is deleted.",
+        request: { params: IdParams },
+        responses: { 200: json(z.array(GraphVersionSummary), "Every version, newest first.") },
+      }),
+      (c) => c.json(store.listVersions(c.req.valid("param").id), 200),
+    )
+    .openapi(
+      route({
+        method: "get",
+        path: "/api/graphs/{id}/versions/{version}",
+        tags: tag.versions,
+        summary: "Get a published version",
+        description: "Use latest for the newest version.",
+        request: { params: GraphVersionParams },
+        responses: { 200: json(GraphVersion, "The version with its copy of the graph.") },
+      }),
+      (c) => {
+        const { id, version } = c.req.valid("param");
+        return c.json(store.getVersion(id, version), 200);
+      },
     );
 
   app.doc31("/openapi.json", {
     openapi: "3.1.0",
     info: {
       title: "graphs API",
-      version: "4.0.0",
+      version: "4.1.0",
       description:
-        "A labeled property graph. Nodes and edges are shared entities; a graph is a named subgraph that holds nodes, their positions, and edges.",
+        "A labeled property graph. Nodes and edges are shared entities; a graph is a named subgraph that holds nodes, their positions, and edges. A published version is a copy of a graph that does not change.",
     },
   });
   app.get("/docs", Scalar({ url: "/openapi.json", pageTitle: "graphs API", showDeveloperTools: "never" }));

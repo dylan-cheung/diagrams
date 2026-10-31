@@ -1,7 +1,7 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { autoLayout } from "../layout.ts";
-import type { GraphNode, GraphSummary, GraphView, Position } from "../model.ts";
+import type { GraphNode, GraphSummary, GraphVersionSummary, GraphView, Position } from "../model.ts";
 import { ApiError, api } from "./api.ts";
 import { GraphCanvas, type Selection } from "./canvas.tsx";
 import { Inspector, type InspectorActions } from "./inspector.tsx";
@@ -15,6 +15,8 @@ export const App = () => {
   const [graphs, setGraphs] = useState<GraphSummary[]>([]);
   const [library, setLibrary] = useState<GraphNode[]>([]);
   const [view, setView] = useState<GraphView | null>(null);
+  const [versions, setVersions] = useState<GraphVersionSummary[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
   const [selection, setSelection] = useState<Selection>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [newGraphName, setNewGraphName] = useState("");
@@ -32,14 +34,16 @@ export const App = () => {
 
   const refresh = useCallback(
     async (graphId: string | null) => {
-      const [nextGraphs, nextLibrary, nextView] = await Promise.all([
+      const [nextGraphs, nextLibrary, nextView, nextVersions] = await Promise.all([
         api.listGraphs(),
         api.listNodes(),
         graphId == null ? Promise.resolve(null) : loadView(graphId),
+        graphId == null ? Promise.resolve([]) : api.listVersions(graphId),
       ]);
       setGraphs(nextGraphs);
       setLibrary(nextLibrary);
       setView(nextView);
+      setVersions(nextVersions);
       setSelection((current) => {
         if (current == null || nextView == null) return null;
         const items = current.kind === "node" ? nextView.nodes : nextView.edges;
@@ -54,6 +58,7 @@ export const App = () => {
       try {
         const result = await action();
         setErrors([]);
+        setNotice(null);
         await refresh(graphId);
         return result;
       } catch (error) {
@@ -97,6 +102,13 @@ export const App = () => {
       : {
           updateGraph: (patch) => void run(() => api.updateGraph(graphId, patch)),
           deleteGraph: () => void run(() => api.deleteGraph(graphId), null),
+          publish: async () => {
+            const latest = versions[0]?.version;
+            const published = await run(() => api.publish(graphId));
+            if (published != null) {
+              setNotice(published.version === latest ? `No changes since version ${published.version}.` : `Published version ${published.version}.`);
+            }
+          },
           updateNode: (id, patch) => void run(() => api.updateNode(id, patch)),
           removeNodeFromGraph: (id) => void run(() => api.removeNodeFromGraph(graphId, id)),
           deleteNode: (id) => void run(() => api.deleteNode(id)),
@@ -228,7 +240,7 @@ export const App = () => {
         </div>
       </main>
       <aside className="inspector">
-        {view == null || actions == null ? <p className="hint">No graph selected.</p> : <Inspector view={view} selection={selection} actions={actions} />}
+        {view == null || actions == null ? <p className="hint">No graph selected.</p> : <Inspector view={view} versions={versions} notice={notice} selection={selection} actions={actions} />}
       </aside>
     </div>
   );

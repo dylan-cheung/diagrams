@@ -142,3 +142,56 @@ describe("graphs", () => {
     migrated.close();
   });
 });
+
+describe("published versions", () => {
+  test("a version keeps the graph as it was when published", () => {
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const a = store.createNodeInGraph(one.id, { name: "A", properties: { rule: "x > 1" } }, { x: 1, y: 2 });
+    const b = store.createNodeInGraph(one.id, { name: "B" }, null);
+    store.createEdgeInGraph(one.id, { source: a.id, target: b.id, label: "yes" });
+
+    const first = store.publish(one.id);
+    expect(first).toMatchObject({ graphId: one.id, version: 1 });
+    store.updateNode(a.id, { properties: { rule: "x > 2" } });
+    store.removeNodeFromGraph(one.id, b.id);
+
+    const kept = store.getVersion(one.id, 1);
+    expect(kept.hash).toBe(first.hash);
+    expect(kept.view.nodes.map(({ name, properties }) => [name, properties])).toEqual([
+      ["A", { rule: "x > 1" }],
+      ["B", {}],
+    ]);
+    expect(kept.view.edges).toHaveLength(1);
+    expect(store.publish(one.id).version).toBe(2);
+    expect(store.getVersion(one.id, "latest").view.nodes[0]?.properties).toEqual({ rule: "x > 2" });
+    expect(store.listVersions(one.id).map(({ version }) => version)).toEqual([2, 1]);
+  });
+
+  test("publishing with no changes returns the latest version", () => {
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const a = store.createNodeInGraph(one.id, { name: "A" }, { x: 0, y: 0 });
+    const first = store.publish(one.id);
+    store.moveNodes(one.id, { [a.id]: { x: 50, y: 50 } });
+    expect(store.publish(one.id)).toEqual(first);
+    expect(store.listVersions(one.id)).toHaveLength(1);
+  });
+
+  test("an edit to a shared node does not change a version of another graph", () => {
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const two = store.createGraph({ name: "two", description: "Test graph two." });
+    const a = store.createNodeInGraph(one.id, { name: "A" }, null);
+    store.addNodeToGraph(two.id, a.id, null);
+    store.publish(two.id);
+    store.updateNode(a.id, { name: "A2" });
+    expect(store.getVersion(two.id, 1).view.nodes[0]?.name).toBe("A");
+  });
+
+  test("versions stay after the graph is deleted", () => {
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    store.createNodeInGraph(one.id, { name: "A" }, null);
+    store.publish(one.id);
+    store.deleteGraph(one.id);
+    expect(store.getVersion(one.id, 1).view.graph.name).toBe("one");
+    expect(() => store.getVersion(one.id, 2)).toThrow("The graph version does not exist.");
+  });
+});

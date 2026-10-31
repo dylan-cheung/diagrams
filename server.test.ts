@@ -58,6 +58,23 @@ describe("API", () => {
   });
 });
 
+describe("versions API", () => {
+  test("publishes a graph and reads a version by number or latest", async () => {
+    const graph = (await send("POST", "/api/graphs", { name: "tree", description: "A decision tree." })).body;
+    await send("POST", `/api/graphs/${graph.id}/nodes`, { name: "Start" });
+    const published = await send("POST", `/api/graphs/${graph.id}/versions`);
+    expect(published.body).toMatchObject({ version: 1, view: { nodes: [{ name: "Start" }] } });
+    expect((await send("GET", `/api/graphs/${graph.id}/versions/latest`)).body).toEqual(published.body);
+    expect((await send("GET", `/api/graphs/${graph.id}/versions/1`)).body).toEqual(published.body);
+    expect((await send("GET", `/api/graphs/${graph.id}/versions`)).body).toEqual([
+      { graphId: graph.id, version: 1, hash: published.body.hash, publishedAt: published.body.publishedAt },
+    ]);
+    expect((await send("GET", `/api/graphs/${graph.id}/versions/9`)).status).toBe(404);
+    expect((await send("GET", `/api/graphs/${graph.id}/versions/abc`)).status).toBe(400);
+    expect((await send("POST", "/api/graphs/missing/versions")).status).toBe(404);
+  });
+});
+
 describe("API docs", () => {
   test("the OpenAPI spec lists every route", async () => {
     const spec = (await send("GET", "/openapi.json")).body;
@@ -73,6 +90,8 @@ describe("API docs", () => {
       "/api/graphs/{id}/nodes",
       "/api/graphs/{id}/nodes/{nodeId}",
       "/api/graphs/{id}/positions",
+      "/api/graphs/{id}/versions",
+      "/api/graphs/{id}/versions/{version}",
       "/api/nodes",
       "/api/nodes/{id}",
     ]);

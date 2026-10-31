@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import {
@@ -9,6 +10,8 @@ import {
   type GraphInput,
   type GraphNode,
   type GraphSummary,
+  type GraphVersion,
+  type GraphVersionSummary,
   type GraphView,
   type NodeInput,
   type Position,
@@ -29,6 +32,8 @@ type EdgeRow = {
 };
 
 type GraphRow = { id: string; name: string; description: string; created_at: string; updated_at: string };
+
+type VersionRow = { graph_id: string; version: number; hash: string; published_at: string };
 
 type PlacedNodeRow = NodeRow & { x: number | null; y: number | null };
 
@@ -70,6 +75,29 @@ const toGraph = (row: GraphRow): Graph => ({
   updatedAt: row.updated_at,
 });
 
+const toVersionSummary = (row: VersionRow): GraphVersionSummary => ({
+  graphId: row.graph_id,
+  version: row.version,
+  hash: row.hash,
+  publishedAt: row.published_at,
+});
+
+const sortKeys = (properties: Properties) => Object.fromEntries(Object.entries(properties).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+
+const byId = <T extends { id: string }>(items: T[]) => [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+export const contentHash = ({ graph, nodes, edges }: GraphView) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify({
+        name: graph.name,
+        description: graph.description,
+        nodes: byId(nodes).map((n) => [n.id, n.name, n.description, n.labels, sortKeys(n.properties)]),
+        edges: byId(edges).map((e) => [e.id, e.source, e.target, e.directed, e.label, sortKeys(e.properties)]),
+      }),
+    )
+    .digest("hex");
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS nodes (
   id TEXT PRIMARY KEY,
@@ -110,6 +138,14 @@ CREATE TABLE IF NOT EXISTS graph_edges (
   graph_id TEXT NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
   edge_id TEXT NOT NULL REFERENCES edges(id) ON DELETE CASCADE,
   PRIMARY KEY (graph_id, edge_id)
+);
+CREATE TABLE IF NOT EXISTS graph_versions (
+  graph_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  hash TEXT NOT NULL,
+  snapshot TEXT NOT NULL,
+  published_at TEXT NOT NULL,
+  PRIMARY KEY (graph_id, version)
 );
 `;
 
@@ -284,6 +320,36 @@ export const openGraphStore = (path: string) => {
     return { graph, nodes, edges };
   };
 
+  const latestVersion = db.query<VersionRow & { snapshot: string }, { graphId: string }>(
+    "SELECT * FROM graph_versions WHERE graph_id = $graphId ORDER BY version DESC LIMIT 1",
+  );
+  const versionByNumber = db.query<VersionRow & { snapshot: string }, { graphId: string; version: number }>(
+    "SELECT * FROM graph_versions WHERE graph_id = $graphId AND version = $version",
+  );
+
+  const toVersion = (row: VersionRow & { snapshot: string }): GraphVersion => ({
+    ...toVersionSummary(row),
+    view: JSON.parse(row.snapshot) as GraphView,
+  });
+
+  const publish = db.transaction((graphId: string): GraphVersion => {
+    const snapshot = view(graphId);
+    const hash = contentHash(snapshot);
+    const latest = latestVersion.get({ graphId });
+    if (latest?.hash === hash) return toVersion(latest);
+    const row = { graph_id: graphId, version: (latest?.version ?? 0) + 1, hash, snapshot: JSON.stringify(snapshot), published_at: now() };
+    db.query(
+      "INSERT INTO graph_versions (graph_id, version, hash, snapshot, published_at) VALUES ($graph_id, $version, $hash, $snapshot, $published_at)",
+    ).run(row);
+    return toVersion(row);
+  });
+
+  const getVersion = (graphId: string, version: number | "latest") => {
+    const row = version === "latest" ? latestVersion.get({ graphId }) : versionByNumber.get({ graphId, version });
+    if (row == null) throw new StoreError("The graph version does not exist.", 404);
+    return toVersion(row);
+  };
+
   return {
     listNodes: () => db.query<NodeRow, []>("SELECT * FROM nodes ORDER BY name COLLATE NOCASE").all().map(toNode),
     getNode: requireNode,
@@ -340,6 +406,16 @@ export const openGraphStore = (path: string) => {
       db.query("DELETE FROM graphs WHERE id = $id").run({ id });
     },
     view,
+
+    publish,
+    listVersions: (graphId: string) =>
+      db
+        .query<VersionRow, { graphId: string }>(
+          "SELECT graph_id, version, hash, published_at FROM graph_versions WHERE graph_id = $graphId ORDER BY version DESC",
+        )
+        .all({ graphId })
+        .map(toVersionSummary),
+    getVersion,
 
     addNodeToGraph: db.transaction((graphId: string, nodeId: string, position: Position | null) => {
       placeNode(graphId, nodeId, position, true);

@@ -61,6 +61,17 @@ export const GraphView = z
   .object({ graph: Graph, nodes: z.array(PlacedNode), edges: z.array(Edge) })
   .openapi("GraphView");
 
+export const GraphVersionSummary = z
+  .object({
+    graphId: Id,
+    version: z.number().int().openapi({ example: 3 }),
+    hash: z.string().openapi({ example: "9f2c6b1e0d4a7f3c5e8b2a1d6c9f0e3b7a4d2c8e1f5b9a0c3d6e2f7b4a8c1d5e" }),
+    publishedAt: Timestamp,
+  })
+  .openapi("GraphVersionSummary");
+
+export const GraphVersion = GraphVersionSummary.extend({ view: GraphView }).openapi("GraphVersion");
+
 const Name = (error: string) => z.string().trim().min(1, { error });
 
 export const NodeInput = z
@@ -116,6 +127,8 @@ export type Graph = z.infer<typeof Graph>;
 export type GraphSummary = z.infer<typeof GraphSummary>;
 export type PlacedNode = z.infer<typeof PlacedNode>;
 export type GraphView = z.infer<typeof GraphView>;
+export type GraphVersionSummary = z.infer<typeof GraphVersionSummary>;
+export type GraphVersion = z.infer<typeof GraphVersion>;
 export type NodeInput = z.infer<typeof NodeInput>;
 export type EdgeInput = z.infer<typeof EdgeInput>;
 export type GraphInput = z.infer<typeof GraphInput>;

@@ -7,6 +7,8 @@ export type {
   GraphInput,
   GraphNode,
   GraphSummary,
+  GraphVersion,
+  GraphVersionSummary,
   GraphView,
   NodeInput,
   PlacedNode,

@@ -1,9 +1,10 @@
-import { normalizeLabels, type GraphEdge, type GraphInput, type GraphNode, type GraphView } from "../model.ts";
+import { normalizeLabels, type GraphEdge, type GraphInput, type GraphNode, type GraphVersionSummary, type GraphView } from "../model.ts";
 import { PropertiesField, TextAreaField, TextField } from "./fields.tsx";
 
 export type InspectorActions = {
   updateGraph: (patch: Partial<GraphInput>) => void;
   deleteGraph: () => void;
+  publish: () => void;
   updateNode: (id: string, patch: Partial<Pick<GraphNode, "name" | "description" | "labels" | "properties">>) => void;
   removeNodeFromGraph: (id: string) => void;
   deleteNode: (id: string) => void;
@@ -88,6 +89,29 @@ const EdgeInspector = ({ edge, view, actions }: { edge: GraphEdge; view: GraphVi
   </section>
 );
 
+const Versions = ({ versions, notice, actions }: { versions: GraphVersionSummary[]; notice: string | null; actions: InspectorActions }) => (
+  <section className="section">
+    <h2>Versions</h2>
+    <p className="hint">Apps run a published version. A version does not change when you edit the graph.</p>
+    <button type="button" onClick={actions.publish}>
+      Publish
+    </button>
+    {notice != null && <p className="hint">{notice}</p>}
+    {versions.length === 0 ? (
+      <p className="hint">Not published.</p>
+    ) : (
+      <ul className="versions">
+        {versions.map((version) => (
+          <li key={version.version}>
+            <span>Version {version.version}</span>
+            <span className="meta">{new Date(version.publishedAt).toLocaleString()}</span>
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
+);
+
 const GraphInspector = ({ view, actions }: { view: GraphView; actions: InspectorActions }) => (
   <section className="section">
     <h2>Graph</h2>
@@ -116,10 +140,14 @@ const GraphInspector = ({ view, actions }: { view: GraphView; actions: Inspector
 
 export const Inspector = ({
   view,
+  versions,
+  notice,
   selection,
   actions,
 }: {
   view: GraphView;
+  versions: GraphVersionSummary[];
+  notice: string | null;
   selection: { kind: "node" | "edge"; id: string } | null;
   actions: InspectorActions;
 }) => {
@@ -127,5 +155,10 @@ export const Inspector = ({
   const edge = selection?.kind === "edge" ? view.edges.find(({ id }) => id === selection.id) : undefined;
   if (node != null) return <NodeInspector key={node.id} node={node} view={view} actions={actions} />;
   if (edge != null) return <EdgeInspector key={edge.id} edge={edge} view={view} actions={actions} />;
-  return <GraphInspector key={view.graph.id} view={view} actions={actions} />;
+  return (
+    <>
+      <GraphInspector key={view.graph.id} view={view} actions={actions} />
+      <Versions versions={versions} notice={notice} actions={actions} />
+    </>
+  );
 };

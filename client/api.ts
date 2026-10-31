@@ -30,6 +30,8 @@ export const api = {
   updateGraph: (id: string, input: Partial<GraphInput>) => unwrap(graphs[":id"].$patch({ param: { id }, json: input })),
   deleteGraph: (id: string) => unwrap(graphs[":id"].$delete({ param: { id } })),
   view: (id: string) => unwrap(graphs[":id"].$get({ param: { id } })),
+  publish: (id: string) => unwrap(graphs[":id"].versions.$post({ param: { id } })),
+  listVersions: (id: string) => unwrap(graphs[":id"].versions.$get({ param: { id } })),
 
   listNodes: () => unwrap(nodes.$get()),
   updateNode: (id: string, input: Partial<NodeInput>) => unwrap(nodes[":id"].$patch({ param: { id }, json: input })),

@@ -15,7 +15,7 @@ import {
   type Properties,
 } from "./model.ts";
 
-type NodeRow = { id: string; name: string; labels: string; properties: string; created_at: string; updated_at: string };
+type NodeRow = { id: string; name: string; description: string; labels: string; properties: string; created_at: string; updated_at: string };
 
 type EdgeRow = {
   id: string;
@@ -44,6 +44,7 @@ export class StoreError extends Error {
 const toNode = (row: NodeRow): GraphNode => ({
   id: row.id,
   name: row.name,
+  description: row.description,
   labels: JSON.parse(row.labels) as string[],
   properties: JSON.parse(row.properties) as Properties,
   createdAt: row.created_at,
@@ -73,6 +74,7 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS nodes (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
   labels TEXT NOT NULL DEFAULT '[]',
   properties TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
@@ -117,8 +119,10 @@ export const openGraphStore = (path: string) => {
   db.run("PRAGMA journal_mode = WAL");
   db.run("PRAGMA foreign_keys = ON");
   db.exec(SCHEMA);
-  const graphColumns = db.query<{ name: string }, []>("PRAGMA table_info(graphs)").all();
-  if (!graphColumns.some(({ name }) => name === "description")) db.run("ALTER TABLE graphs ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+  for (const table of ["nodes", "graphs"]) {
+    const columns = db.query<{ name: string }, []>(`PRAGMA table_info(${table})`).all();
+    if (!columns.some(({ name }) => name === "description")) db.run(`ALTER TABLE ${table} ADD COLUMN description TEXT NOT NULL DEFAULT ''`);
+  }
 
   const now = () => new Date().toISOString();
 
@@ -165,10 +169,11 @@ export const openGraphStore = (path: string) => {
     const id = crypto.randomUUID();
     const stamp = now();
     db.query(
-      "INSERT INTO nodes (id, name, labels, properties, created_at, updated_at) VALUES ($id, $name, $labels, $properties, $stamp, $stamp)",
+      "INSERT INTO nodes (id, name, description, labels, properties, created_at, updated_at) VALUES ($id, $name, $description, $labels, $properties, $stamp, $stamp)",
     ).run({
       id,
       name: input.name.trim(),
+      description: input.description?.trim() ?? "",
       labels: JSON.stringify(normalizeLabels(input.labels ?? [])),
       properties: JSON.stringify(input.properties ?? {}),
       stamp,
@@ -178,9 +183,12 @@ export const openGraphStore = (path: string) => {
 
   const updateNode = (id: string, input: Partial<NodeInput>) => {
     const node = requireNode(id);
-    db.query("UPDATE nodes SET name = $name, labels = $labels, properties = $properties, updated_at = $now WHERE id = $id").run({
+    db.query(
+      "UPDATE nodes SET name = $name, description = $description, labels = $labels, properties = $properties, updated_at = $now WHERE id = $id",
+    ).run({
       id,
       name: input.name?.trim() ?? node.name,
+      description: input.description?.trim() ?? node.description,
       labels: JSON.stringify(normalizeLabels(input.labels ?? node.labels)),
       properties: JSON.stringify(input.properties ?? node.properties),
       now: now(),

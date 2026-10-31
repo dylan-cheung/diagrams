@@ -4,7 +4,7 @@ import { PropertiesField, TextAreaField, TextField } from "./fields.tsx";
 export type InspectorActions = {
   updateGraph: (patch: Partial<GraphInput>) => void;
   deleteGraph: () => void;
-  updateNode: (id: string, patch: Partial<Pick<GraphNode, "name" | "labels" | "properties">>) => void;
+  updateNode: (id: string, patch: Partial<Pick<GraphNode, "name" | "description" | "labels" | "properties">>) => void;
   removeNodeFromGraph: (id: string) => void;
   deleteNode: (id: string) => void;
   updateEdge: (id: string, patch: Partial<Pick<GraphEdge, "label" | "directed" | "source" | "target" | "properties">>) => void;
@@ -20,6 +20,12 @@ const NodeInspector = ({ node, view, actions }: { node: GraphNode; view: GraphVi
     <section className="section">
       <h2>Node</h2>
       <TextField label="Name" value={node.name} onCommit={(name) => actions.updateNode(node.id, { name })} />
+      <TextAreaField
+        label="Description"
+        placeholder="Optional"
+        value={node.description}
+        onCommit={(description) => actions.updateNode(node.id, { description })}
+      />
       <TextField
         label="Labels"
         placeholder="Person, Service"

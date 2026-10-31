@@ -28,6 +28,13 @@ describe("nodes and edges", () => {
     ]);
   });
 
+  test("a node has an optional description", () => {
+    const a = store.createNode({ name: "A" });
+    expect(a.description).toBe("");
+    expect(store.updateNode(a.id, { description: " Does A things. " })).toMatchObject({ name: "A", description: "Does A things." });
+    expect(store.createNode({ name: "B", description: "Does B things." }).description).toBe("Does B things.");
+  });
+
   test("deleting a node deletes its edges everywhere", () => {
     const a = store.createNode({ name: "A" });
     const b = store.createNode({ name: "B" });
@@ -119,14 +126,19 @@ describe("graphs", () => {
     expect(store.listGraphs()[0]).toMatchObject({ description: "A new purpose." });
   });
 
-  test("adds the description column to a database made before it existed", () => {
+  test("adds the description columns to a database made before they existed", () => {
     const path = join(mkdtempSync(join(tmpdir(), "graphs-")), "old.sqlite");
     const old = new Database(path, { create: true });
     old.run("CREATE TABLE graphs (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)");
     old.run("INSERT INTO graphs VALUES ('g1', 'legacy', '2026-10-29T00:00:00.000Z', '2026-10-29T00:00:00.000Z')");
+    old.run(
+      "CREATE TABLE nodes (id TEXT PRIMARY KEY, name TEXT NOT NULL, labels TEXT NOT NULL DEFAULT '[]', properties TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+    );
+    old.run("INSERT INTO nodes (id, name, created_at, updated_at) VALUES ('n1', 'old node', '2026-10-29T00:00:00.000Z', '2026-10-29T00:00:00.000Z')");
     old.close();
     const migrated = openGraphStore(path);
     expect(migrated.listGraphs()[0]).toMatchObject({ name: "legacy", description: "" });
+    expect(migrated.listNodes()[0]).toMatchObject({ name: "old node", description: "" });
     migrated.close();
   });
 });

@@ -22,6 +22,7 @@ export const Node = z
   .object({
     id: Id,
     name: z.string().openapi({ example: "Ada" }),
+    description: z.string().openapi({ example: "Leads the payments team." }),
     labels: Labels,
     properties: Properties,
     createdAt: Timestamp,
@@ -63,7 +64,12 @@ export const GraphView = z
 const Name = (error: string) => z.string().trim().min(1, { error });
 
 export const NodeInput = z
-  .object({ name: Name("A node needs a name."), labels: Labels.optional(), properties: Properties.optional() })
+  .object({
+    name: Name("A node needs a name."),
+    description: z.string().optional().openapi({ example: "Leads the payments team." }),
+    labels: Labels.optional(),
+    properties: Properties.optional(),
+  })
   .openapi("NodeInput");
 
 export const NodePatch = NodeInput.partial().openapi("NodePatch");

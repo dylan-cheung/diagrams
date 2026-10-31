@@ -8,7 +8,7 @@ The app uses the labeled property graph model of ISO GQL (ISO/IEC 39075). In gra
 
 | Entity | Fields | Rules |
 |---|---|---|
-| Node | `id`, `name`, `labels[]`, `properties{}` | The core entity. A node does not store its edges. |
+| Node | `id`, `name`, `description`, `labels[]`, `properties{}` | The core entity. A node does not store its edges. The description is optional. |
 | Edge | `id`, `source`, `target`, `directed`, `label`, `properties{}` | Its own entity. Deleting a node deletes its edges. |
 | Graph | `id`, `name`, `description` + its nodes (with `x`, `y`) and edges | A named subgraph. Nodes and edges are shared, so one node can be in many graphs with a different position in each. A graph can include an edge only if it includes both nodes. The description says what the graph is for. It is required when you create a graph. |
 

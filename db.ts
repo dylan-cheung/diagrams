@@ -2,10 +2,14 @@ import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { EMPTY_CONTENT, diffGraphs, toContent } from "./diff.ts";
 import {
   normalizeLabels,
+  type ContentEdge,
+  type ContentNode,
   type EdgeInput,
   type Graph,
+  type GraphContent,
   type GraphEdge,
   type GraphInput,
   type GraphNode,
@@ -16,6 +20,9 @@ import {
   type NodeInput,
   type Position,
   type Properties,
+  type Proposal,
+  type ProposalInput,
+  type ProposalSummary,
 } from "./model.ts";
 
 type NodeRow = { id: string; name: string; description: string; labels: string; properties: string; created_at: string; updated_at: string };
@@ -36,6 +43,19 @@ type GraphRow = { id: string; name: string; description: string; created_at: str
 type VersionRow = { graph_id: string; version: number; hash: string; published_at: string };
 
 type PlacedNodeRow = NodeRow & { x: number | null; y: number | null };
+
+type ProposalRow = {
+  id: string;
+  graph_id: string;
+  title: string;
+  rationale: string;
+  work_item: string;
+  status: ProposalSummary["status"];
+  base_version: number | null;
+  content: string;
+  created_at: string;
+  updated_at: string;
+};
 
 export class StoreError extends Error {
   constructor(
@@ -81,6 +101,24 @@ const toVersionSummary = (row: VersionRow): GraphVersionSummary => ({
   hash: row.hash,
   publishedAt: row.published_at,
 });
+
+const toProposalSummary = (row: ProposalRow): ProposalSummary => ({
+  id: row.id,
+  graphId: row.graph_id,
+  title: row.title,
+  rationale: row.rationale,
+  workItem: row.work_item,
+  status: row.status,
+  baseVersion: row.base_version,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const sameNode = (a: Pick<ContentNode, "name" | "description" | "labels" | "properties">, b: typeof a) =>
+  JSON.stringify([a.name, a.description, a.labels, a.properties]) === JSON.stringify([b.name, b.description, b.labels, b.properties]);
+
+const sameEdge = (a: Omit<ContentEdge, "id">, b: typeof a) =>
+  JSON.stringify([a.source, a.target, a.directed, a.label, a.properties]) === JSON.stringify([b.source, b.target, b.directed, b.label, b.properties]);
 
 const sortKeys = (properties: Properties) => Object.fromEntries(Object.entries(properties).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 
@@ -147,6 +185,19 @@ CREATE TABLE IF NOT EXISTS graph_versions (
   published_at TEXT NOT NULL,
   PRIMARY KEY (graph_id, version)
 );
+CREATE TABLE IF NOT EXISTS proposals (
+  id TEXT PRIMARY KEY,
+  graph_id TEXT NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  rationale TEXT NOT NULL DEFAULT '',
+  work_item TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open',
+  base_version INTEGER,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS proposals_graph ON proposals(graph_id);
 `;
 
 export const openGraphStore = (path: string) => {
@@ -303,6 +354,16 @@ export const openGraphStore = (path: string) => {
     touchGraph(graphId);
   };
 
+  const detachNode = (graphId: string, nodeId: string) => {
+    db.query(
+      "DELETE FROM graph_edges WHERE graph_id = $graphId AND edge_id IN (SELECT id FROM edges WHERE source = $nodeId OR target = $nodeId)",
+    ).run({ graphId, nodeId });
+    db.query("DELETE FROM graph_nodes WHERE graph_id = $graphId AND node_id = $nodeId").run({ graphId, nodeId });
+  };
+
+  const detachEdge = (graphId: string, edgeId: string) =>
+    db.query("DELETE FROM graph_edges WHERE graph_id = $graphId AND edge_id = $edgeId").run({ graphId, edgeId });
+
   const view = (graphId: string): GraphView => {
     const graph = requireGraph(graphId);
     const nodes = db
@@ -348,6 +409,180 @@ export const openGraphStore = (path: string) => {
     const row = version === "latest" ? latestVersion.get({ graphId }) : versionByNumber.get({ graphId, version });
     if (row == null) throw new StoreError("The graph version does not exist.", 404);
     return toVersion(row);
+  };
+
+  const proposalById = db.query<ProposalRow, { id: string; graphId: string }>("SELECT * FROM proposals WHERE id = $id AND graph_id = $graphId");
+  const graphPositions = db.query<{ node_id: string; x: number | null; y: number | null }, { graphId: string }>(
+    "SELECT node_id, x, y FROM graph_nodes WHERE graph_id = $graphId",
+  );
+  const otherGraphs = db.query<{ name: string }, { nodeId: string; graphId: string }>(
+    "SELECT g.name FROM graph_nodes gn JOIN graphs g ON g.id = gn.graph_id WHERE gn.node_id = $nodeId AND gn.graph_id != $graphId ORDER BY g.name COLLATE NOCASE",
+  );
+
+  const requireProposal = (graphId: string, proposalId: string) => {
+    const row = proposalById.get({ id: proposalId, graphId });
+    if (row == null) throw new StoreError("The proposal does not exist.", 404);
+    return row;
+  };
+
+  const requireOpenProposal = (graphId: string, proposalId: string) => {
+    const row = requireProposal(graphId, proposalId);
+    if (row.status !== "open") throw new StoreError(`The proposal is ${row.status}. Only an open proposal can change.`, 409);
+    return row;
+  };
+
+  const toProposal = (row: ProposalRow): Proposal => {
+    const content = JSON.parse(row.content) as GraphContent;
+    const sharedWith = Object.fromEntries(
+      content.nodes
+        .map(({ id }) => [id, otherGraphs.all({ nodeId: id, graphId: row.graph_id }).map(({ name }) => name)] as const)
+        .filter(([, names]) => names.length > 0),
+    );
+    return { ...toProposalSummary(row), content, sharedWith };
+  };
+
+  const proposedContent = (graphId: string, input: ProposalInput): GraphContent => {
+    const graph = requireGraph(graphId);
+    const positions = new Map(
+      graphPositions.all({ graphId }).map(({ node_id, x, y }) => [node_id, x == null || y == null ? null : { x, y }] as const),
+    );
+    const nodeIds = new Set<string>();
+    const nodes = input.nodes.map((proposed): ContentNode => {
+      if (nodeIds.has(proposed.id)) throw new StoreError(`The proposal has two nodes with the id ${proposed.id}.`, 400);
+      nodeIds.add(proposed.id);
+      const row = nodeById.get({ id: proposed.id });
+      const existing = row == null ? null : toNode(row);
+      const name = proposed.name ?? existing?.name;
+      if (name == null) throw new StoreError(`The new node ${proposed.id} needs a name.`, 400);
+      return {
+        id: proposed.id,
+        name,
+        description: proposed.description?.trim() ?? existing?.description ?? "",
+        labels: normalizeLabels(proposed.labels ?? existing?.labels ?? []),
+        properties: proposed.properties ?? existing?.properties ?? {},
+        position: proposed.position !== undefined ? proposed.position : (positions.get(proposed.id) ?? null),
+      };
+    });
+    const edgeIds = new Set<string>();
+    const edges = input.edges.map((proposed): ContentEdge => {
+      if (edgeIds.has(proposed.id)) throw new StoreError(`The proposal has two edges with the id ${proposed.id}.`, 400);
+      edgeIds.add(proposed.id);
+      const row = edgeById.get({ id: proposed.id });
+      const existing = row == null ? null : toEdge(row);
+      const source = proposed.source ?? existing?.source;
+      const target = proposed.target ?? existing?.target;
+      if (source == null || target == null) throw new StoreError(`The new edge ${proposed.id} needs a source and a target.`, 400);
+      if (!nodeIds.has(source) || !nodeIds.has(target)) {
+        throw new StoreError(`The edge ${proposed.id} connects a node that is not in the proposal.`, 400);
+      }
+      return {
+        id: proposed.id,
+        source,
+        target,
+        directed: proposed.directed ?? existing?.directed ?? true,
+        label: proposed.label?.trim() ?? existing?.label ?? "",
+        properties: proposed.properties ?? existing?.properties ?? {},
+      };
+    });
+    return {
+      graph: { name: input.graph?.name ?? graph.name, description: input.graph?.description ?? graph.description },
+      nodes,
+      edges,
+    };
+  };
+
+  const createProposal = (graphId: string, input: ProposalInput) => {
+    const content = proposedContent(graphId, input);
+    const id = crypto.randomUUID();
+    const stamp = now();
+    db.query(
+      `INSERT INTO proposals (id, graph_id, title, rationale, work_item, status, base_version, content, created_at, updated_at)
+       VALUES ($id, $graphId, $title, $rationale, $workItem, 'open', $baseVersion, $content, $stamp, $stamp)`,
+    ).run({
+      id,
+      graphId,
+      title: input.title,
+      rationale: input.rationale?.trim() ?? "",
+      workItem: input.workItem?.trim() ?? "",
+      baseVersion: latestVersion.get({ graphId })?.version ?? null,
+      content: JSON.stringify(content),
+      stamp,
+    });
+    return toProposal(requireProposal(graphId, id));
+  };
+
+  const reviseProposal = (graphId: string, proposalId: string, input: ProposalInput) => {
+    requireOpenProposal(graphId, proposalId);
+    const content = proposedContent(graphId, input);
+    db.query(
+      `UPDATE proposals SET title = $title, rationale = $rationale, work_item = $workItem, base_version = $baseVersion, content = $content, updated_at = $now
+       WHERE id = $id`,
+    ).run({
+      id: proposalId,
+      title: input.title,
+      rationale: input.rationale?.trim() ?? "",
+      workItem: input.workItem?.trim() ?? "",
+      baseVersion: latestVersion.get({ graphId })?.version ?? null,
+      content: JSON.stringify(content),
+      now: now(),
+    });
+    return toProposal(requireProposal(graphId, proposalId));
+  };
+
+  const setStatus = (proposalId: string, status: ProposalSummary["status"]) =>
+    db.query("UPDATE proposals SET status = $status, updated_at = $now WHERE id = $id").run({ id: proposalId, status, now: now() });
+
+  const discardProposal = (graphId: string, proposalId: string) => {
+    requireOpenProposal(graphId, proposalId);
+    setStatus(proposalId, "discarded");
+    return toProposal(requireProposal(graphId, proposalId));
+  };
+
+  const applyProposal = db.transaction((graphId: string, proposalId: string, andPublish: boolean) => {
+    const { graph, nodes, edges } = toProposal(requireOpenProposal(graphId, proposalId)).content;
+    const current = view(graphId);
+    if (graph.name !== current.graph.name || graph.description !== current.graph.description) {
+      uniqueName(() =>
+        db
+          .query("UPDATE graphs SET name = $name, description = $description, updated_at = $now WHERE id = $graphId")
+          .run({ graphId, name: graph.name, description: graph.description, now: now() }),
+      );
+    }
+    const nodeIds = new Map<string, string>();
+    for (const node of nodes) {
+      const row = nodeById.get({ id: node.id });
+      const id = row == null ? createNode(node).id : node.id;
+      if (row != null && !sameNode(toNode(row), node)) updateNode(id, node);
+      nodeIds.set(node.id, id);
+      placeNode(graphId, id, node.position, false);
+    }
+    const keptNodes = new Set(nodeIds.values());
+    for (const node of current.nodes) if (!keptNodes.has(node.id)) detachNode(graphId, node.id);
+    const appliedEdges = edges.map((edge) => {
+      const input = { ...edge, source: nodeIds.get(edge.source) ?? edge.source, target: nodeIds.get(edge.target) ?? edge.target };
+      const row = edgeById.get({ id: edge.id });
+      const id = row == null ? createEdge(input).id : edge.id;
+      if (row != null && !sameEdge(toEdge(row), input)) updateEdge(id, input);
+      includeEdge(graphId, id);
+      return { ...input, id };
+    });
+    const keptEdges = new Set(appliedEdges.map(({ id }) => id));
+    for (const edge of view(graphId).edges) if (!keptEdges.has(edge.id)) detachEdge(graphId, edge.id);
+    touchGraph(graphId);
+    const appliedContent = { graph, nodes: nodes.map((node) => ({ ...node, id: nodeIds.get(node.id) ?? node.id })), edges: appliedEdges };
+    db.query("UPDATE proposals SET content = $content WHERE id = $id").run({ id: proposalId, content: JSON.stringify(appliedContent) });
+    setStatus(proposalId, "applied");
+    return { proposal: toProposal(requireProposal(graphId, proposalId)), version: andPublish ? publish(graphId) : null };
+  });
+
+  const diffProposal = (graphId: string, proposalId: string, against: number | "latest" | "draft") => {
+    const proposal = toProposal(requireProposal(graphId, proposalId));
+    if (against === "draft") return { against, diff: diffGraphs(toContent(view(graphId)), proposal.content) };
+    if (against === "latest" && latestVersion.get({ graphId }) == null) {
+      return { against: "empty" as const, diff: diffGraphs(EMPTY_CONTENT, proposal.content) };
+    }
+    const base = getVersion(graphId, against);
+    return { against: base.version, diff: diffGraphs(toContent(base.view), proposal.content) };
   };
 
   return {
@@ -428,10 +663,7 @@ export const openGraphStore = (path: string) => {
     }),
     removeNodeFromGraph: db.transaction((graphId: string, nodeId: string) => {
       requireGraph(graphId);
-      db.query(
-        "DELETE FROM graph_edges WHERE graph_id = $graphId AND edge_id IN (SELECT id FROM edges WHERE source = $nodeId OR target = $nodeId)",
-      ).run({ graphId, nodeId });
-      db.query("DELETE FROM graph_nodes WHERE graph_id = $graphId AND node_id = $nodeId").run({ graphId, nodeId });
+      detachNode(graphId, nodeId);
       touchGraph(graphId);
     }),
     createNodeInGraph: db.transaction((graphId: string, input: NodeInput, position: Position | null) => {
@@ -451,9 +683,23 @@ export const openGraphStore = (path: string) => {
     }),
     removeEdgeFromGraph: (graphId: string, edgeId: string) => {
       requireGraph(graphId);
-      db.query("DELETE FROM graph_edges WHERE graph_id = $graphId AND edge_id = $edgeId").run({ graphId, edgeId });
+      detachEdge(graphId, edgeId);
       touchGraph(graphId);
     },
+
+    listProposals: (graphId: string) => {
+      requireGraph(graphId);
+      return db
+        .query<ProposalRow, { graphId: string }>("SELECT * FROM proposals WHERE graph_id = $graphId ORDER BY created_at DESC, rowid DESC")
+        .all({ graphId })
+        .map(toProposalSummary);
+    },
+    getProposal: (graphId: string, proposalId: string) => toProposal(requireProposal(graphId, proposalId)),
+    createProposal,
+    reviseProposal,
+    discardProposal,
+    applyProposal,
+    diffProposal,
 
     close: () => db.close(),
   };

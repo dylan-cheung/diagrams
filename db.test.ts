@@ -195,3 +195,95 @@ describe("published versions", () => {
     expect(() => store.getVersion(one.id, 2)).toThrow("The graph version does not exist.");
   });
 });
+
+describe("proposals", () => {
+  const setup = () => {
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const two = store.createGraph({ name: "two", description: "Test graph two." });
+    const a = store.createNodeInGraph(one.id, { name: "A", properties: { rule: "x > 1" } }, { x: 0, y: 0 });
+    const b = store.createNodeInGraph(one.id, { name: "B" }, { x: 200, y: 0 });
+    const edge = store.createEdgeInGraph(one.id, { source: a.id, target: b.id, label: "yes" });
+    store.addNodeToGraph(two.id, a.id, null);
+    store.publish(one.id);
+    return { one, two, a, b, edge };
+  };
+
+  test("a proposal does not change the graph, and its diff lists each change", () => {
+    const { one, a, b, edge } = setup();
+    const proposal = store.createProposal(one.id, {
+      title: "Add a review step",
+      workItem: "PROJ-1",
+      nodes: [{ id: a.id, properties: { rule: "x > 2" } }, { id: "review", name: "Review", position: { x: 400, y: 0 } }],
+      edges: [{ id: "to-review", source: a.id, target: "review", label: "no" }],
+    });
+    expect(proposal).toMatchObject({ status: "open", baseVersion: 1, workItem: "PROJ-1", sharedWith: { [a.id]: ["two"] } });
+    expect(proposal.content.nodes[0]).toMatchObject({ name: "A", position: { x: 0, y: 0 } });
+    expect(store.view(one.id).nodes).toHaveLength(2);
+
+    const { against, diff } = store.diffProposal(one.id, proposal.id, "latest");
+    expect(against).toBe(1);
+    expect(diff.nodes.map(({ id, status }) => [id, status])).toEqual([
+      [a.id, "changed"],
+      ["review", "added"],
+      [b.id, "removed"],
+    ]);
+    expect(diff.nodes[0]?.fields).toEqual([{ field: "properties.rule", before: "x > 1", after: "x > 2" }]);
+    expect(diff.edges.map(({ id, status }) => [id, status])).toEqual([
+      ["to-review", "added"],
+      [edge.id, "removed"],
+    ]);
+  });
+
+  test("rejects an edge to a node that is not in the proposal", () => {
+    const { one, a } = setup();
+    expect(() =>
+      store.createProposal(one.id, { title: "Bad", nodes: [{ id: a.id }], edges: [{ id: "e", source: a.id, target: "missing" }] }),
+    ).toThrow("The edge e connects a node that is not in the proposal.");
+    expect(() => store.createProposal(one.id, { title: "Bad", nodes: [{ id: "new" }], edges: [] })).toThrow("The new node new needs a name.");
+  });
+
+  test("applying a proposal makes the graph equal to it and can publish", () => {
+    const { one, two, a, b, edge } = setup();
+    const proposal = store.createProposal(one.id, {
+      title: "Rework",
+      graph: { description: "A new purpose." },
+      nodes: [{ id: a.id, name: "A2" }, { id: b.id }, { id: "c", name: "C", position: { x: 9, y: 9 } }],
+      edges: [{ id: edge.id, label: "maybe" }, { id: "b-c", source: b.id, target: "c" }],
+    });
+    const { proposal: applied, version } = store.applyProposal(one.id, proposal.id, true);
+    expect(applied.status).toBe("applied");
+    expect(version?.version).toBe(2);
+
+    const after = store.view(one.id);
+    expect(after.graph.description).toBe("A new purpose.");
+    expect(after.nodes.map(({ name }) => name)).toEqual(["A2", "B", "C"]);
+    expect(after.edges.map(({ label }) => label)).toEqual(["maybe", ""]);
+    expect(store.view(two.id).nodes[0]?.name).toBe("A2");
+    expect(store.diffProposal(one.id, proposal.id, "latest").diff.nodes.every(({ status }) => status === "unchanged")).toBe(true);
+    expect(() => store.applyProposal(one.id, proposal.id, false)).toThrow("The proposal is applied. Only an open proposal can change.");
+  });
+
+  test("applying a proposal removes nodes and edges that it does not hold", () => {
+    const { one, a, b } = setup();
+    const proposal = store.createProposal(one.id, { title: "Drop B", nodes: [{ id: a.id }], edges: [] });
+    store.applyProposal(one.id, proposal.id, false);
+    expect(store.view(one.id)).toMatchObject({ nodes: [{ id: a.id }], edges: [] });
+    expect(store.getNode(b.id).name).toBe("B");
+  });
+
+  test("a discarded proposal cannot be applied or revised", () => {
+    const { one, a } = setup();
+    const proposal = store.createProposal(one.id, { title: "Maybe", nodes: [{ id: a.id }], edges: [] });
+    expect(store.discardProposal(one.id, proposal.id).status).toBe("discarded");
+    expect(() => store.reviseProposal(one.id, proposal.id, { title: "Again", nodes: [], edges: [] })).toThrow(StoreError);
+    expect(store.view(one.id).nodes).toHaveLength(2);
+    expect(store.listProposals(one.id).map(({ status }) => status)).toEqual(["discarded"]);
+  });
+
+  test("compares with the draft, or with nothing when the graph is not published", () => {
+    const fresh = store.createGraph({ name: "fresh", description: "Not published." });
+    const proposal = store.createProposal(fresh.id, { title: "Start", nodes: [{ id: "s", name: "Start" }], edges: [] });
+    expect(store.diffProposal(fresh.id, proposal.id, "latest")).toMatchObject({ against: "empty", diff: { nodes: [{ status: "added" }] } });
+    expect(store.diffProposal(fresh.id, proposal.id, "draft").diff.graph).toEqual([]);
+  });
+});

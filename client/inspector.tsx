@@ -1,4 +1,4 @@
-import { normalizeLabels, type GraphEdge, type GraphInput, type GraphNode, type GraphVersionSummary, type GraphView } from "../model.ts";
+import { normalizeLabels, type GraphEdge, type GraphInput, type GraphNode, type GraphVersionSummary, type GraphView, type ProposalSummary } from "../model.ts";
 import { PropertiesField, TextAreaField, TextField } from "./fields.tsx";
 
 export type InspectorActions = {
@@ -11,6 +11,7 @@ export type InspectorActions = {
   updateEdge: (id: string, patch: Partial<Pick<GraphEdge, "label" | "directed" | "source" | "target" | "properties">>) => void;
   removeEdgeFromGraph: (id: string) => void;
   deleteEdge: (id: string) => void;
+  reviewProposal: (id: string) => void;
 };
 
 const nameOf = (view: GraphView, id: string) => view.nodes.find((node) => node.id === id)?.name ?? id;
@@ -112,6 +113,32 @@ const Versions = ({ versions, notice, actions }: { versions: GraphVersionSummary
   </section>
 );
 
+const Proposals = ({ proposals, actions }: { proposals: ProposalSummary[]; actions: InspectorActions }) => (
+  <section className="section">
+    <h2>Proposals</h2>
+    <p className="hint">A proposal is a changed copy of the graph, for example from Claude. Review it against a version before you apply it.</p>
+    {proposals.length === 0 ? (
+      <p className="hint">No proposals.</p>
+    ) : (
+      <ul className="list">
+        {proposals.map((proposal) => (
+          <li key={proposal.id}>
+            <button type="button" onClick={() => actions.reviewProposal(proposal.id)}>
+              <span>
+                {proposal.title} <span className={`badge badge-status-${proposal.status}`}>{proposal.status}</span>
+              </span>
+              <span className="meta">
+                {proposal.workItem !== "" && `${proposal.workItem} · `}
+                {new Date(proposal.createdAt).toLocaleString()}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
+);
+
 const GraphInspector = ({ view, actions }: { view: GraphView; actions: InspectorActions }) => (
   <section className="section">
     <h2>Graph</h2>
@@ -141,12 +168,14 @@ const GraphInspector = ({ view, actions }: { view: GraphView; actions: Inspector
 export const Inspector = ({
   view,
   versions,
+  proposals,
   notice,
   selection,
   actions,
 }: {
   view: GraphView;
   versions: GraphVersionSummary[];
+  proposals: ProposalSummary[];
   notice: string | null;
   selection: { kind: "node" | "edge"; id: string } | null;
   actions: InspectorActions;
@@ -158,6 +187,7 @@ export const Inspector = ({
   return (
     <>
       <GraphInspector key={view.graph.id} view={view} actions={actions} />
+      <Proposals proposals={proposals} actions={actions} />
       <Versions versions={versions} notice={notice} actions={actions} />
     </>
   );

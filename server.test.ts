@@ -75,6 +75,33 @@ describe("versions API", () => {
   });
 });
 
+describe("proposals API", () => {
+  test("proposes, compares and applies a change", async () => {
+    const graph = (await send("POST", "/api/graphs", { name: "flow", description: "A call flow." })).body;
+    const start = (await send("POST", `/api/graphs/${graph.id}/nodes`, { name: "Start" })).body;
+    await send("POST", `/api/graphs/${graph.id}/versions`);
+    const created = await send("POST", `/api/graphs/${graph.id}/proposals`, {
+      title: "Add an end",
+      nodes: [{ id: start.id }, { id: "end", name: "End" }],
+      edges: [{ id: "e1", source: start.id, target: "end" }],
+    });
+    expect(created.body).toMatchObject({ status: "open", baseVersion: 1 });
+    const path = `/api/graphs/${graph.id}/proposals/${created.body.id}`;
+
+    const diff = (await send("GET", `${path}/diff`)).body;
+    expect(diff.against).toBe(1);
+    expect(diff.diff.nodes.map(({ status }: { status: string }) => status)).toEqual(["unchanged", "added"]);
+    expect((await send("GET", `${path}/diff?against=draft`)).body.against).toBe("draft");
+    expect((await send("GET", `${path}/diff?against=nope`)).status).toBe(400);
+
+    const applied = await send("POST", `${path}/apply`, { publish: true });
+    expect(applied.body).toMatchObject({ proposal: { status: "applied" }, version: { version: 2 } });
+    expect((await send("POST", `${path}/discard`)).status).toBe(409);
+    expect((await send("GET", `/api/graphs/${graph.id}/proposals`)).body).toHaveLength(1);
+    expect((await send("GET", `/api/graphs/${graph.id}/proposals/missing`)).status).toBe(404);
+  });
+});
+
 describe("API docs", () => {
   test("the OpenAPI spec lists every route", async () => {
     const spec = (await send("GET", "/openapi.json")).body;
@@ -90,6 +117,11 @@ describe("API docs", () => {
       "/api/graphs/{id}/nodes",
       "/api/graphs/{id}/nodes/{nodeId}",
       "/api/graphs/{id}/positions",
+      "/api/graphs/{id}/proposals",
+      "/api/graphs/{id}/proposals/{proposalId}",
+      "/api/graphs/{id}/proposals/{proposalId}/apply",
+      "/api/graphs/{id}/proposals/{proposalId}/diff",
+      "/api/graphs/{id}/proposals/{proposalId}/discard",
       "/api/graphs/{id}/versions",
       "/api/graphs/{id}/versions/{version}",
       "/api/nodes",

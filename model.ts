@@ -1,20 +1,31 @@
 import type { PropertyValue } from "./schemas.ts";
 
 export type {
+  ChangeStatus,
+  ContentEdge,
+  ContentNode,
+  EdgeChange,
   EdgeInput,
+  FieldChange,
   Graph,
   GraphEdge,
+  GraphContent,
+  GraphDiff,
   GraphInput,
   GraphNode,
   GraphSummary,
   GraphVersion,
   GraphVersionSummary,
   GraphView,
+  NodeChange,
   NodeInput,
   PlacedNode,
   Position,
   Properties,
   PropertyValue,
+  Proposal,
+  ProposalInput,
+  ProposalSummary,
 } from "./schemas.ts";
 
 const isPropertyValue = (value: unknown): value is PropertyValue =>

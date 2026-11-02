@@ -1,10 +1,11 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { autoLayout } from "../layout.ts";
-import type { GraphNode, GraphSummary, GraphVersionSummary, GraphView, Position } from "../model.ts";
+import type { GraphNode, GraphSummary, GraphVersionSummary, GraphView, Position, ProposalSummary } from "../model.ts";
 import { ApiError, api } from "./api.ts";
 import { GraphCanvas, type Selection } from "./canvas.tsx";
 import { Inspector, type InspectorActions } from "./inspector.tsx";
+import { ProposalReview } from "./review.tsx";
 
 const withPositions = (view: GraphView, positions: Record<string, Position>): GraphView => ({
   ...view,
@@ -16,6 +17,8 @@ export const App = () => {
   const [library, setLibrary] = useState<GraphNode[]>([]);
   const [view, setView] = useState<GraphView | null>(null);
   const [versions, setVersions] = useState<GraphVersionSummary[]>([]);
+  const [proposals, setProposals] = useState<ProposalSummary[]>([]);
+  const [reviewing, setReviewing] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [selection, setSelection] = useState<Selection>(null);
   const [errors, setErrors] = useState<string[]>([]);
@@ -34,16 +37,18 @@ export const App = () => {
 
   const refresh = useCallback(
     async (graphId: string | null) => {
-      const [nextGraphs, nextLibrary, nextView, nextVersions] = await Promise.all([
+      const [nextGraphs, nextLibrary, nextView, nextVersions, nextProposals] = await Promise.all([
         api.listGraphs(),
         api.listNodes(),
         graphId == null ? Promise.resolve(null) : loadView(graphId),
         graphId == null ? Promise.resolve([]) : api.listVersions(graphId),
+        graphId == null ? Promise.resolve([]) : api.listProposals(graphId),
       ]);
       setGraphs(nextGraphs);
       setLibrary(nextLibrary);
       setView(nextView);
       setVersions(nextVersions);
+      setProposals(nextProposals);
       setSelection((current) => {
         if (current == null || nextView == null) return null;
         const items = current.kind === "node" ? nextView.nodes : nextView.edges;
@@ -82,6 +87,7 @@ export const App = () => {
 
   const openGraph = (id: string) => {
     setSelection(null);
+    setReviewing(null);
     setErrors([]);
     void run(async () => undefined, id);
   };
@@ -115,6 +121,10 @@ export const App = () => {
           updateEdge: (id, patch) => void run(() => api.updateEdge(id, patch)),
           removeEdgeFromGraph: (id) => void run(() => api.removeEdgeFromGraph(graphId, id)),
           deleteEdge: (id) => void run(() => api.deleteEdge(id)),
+          reviewProposal: (id) => {
+            setErrors([]);
+            setReviewing(id);
+          },
         };
 
   const addNode = async () => {
@@ -203,45 +213,69 @@ export const App = () => {
           </ul>
         </section>
       </aside>
-      <main className="canvas-pane">
-        <div className="toolbar">
-          <div className="graph-title">{view?.graph.name ?? "No graph selected"}</div>
-          <div className="toolbar-actions">
-            <button type="button" onClick={() => void addNode()} disabled={view == null}>
-              Add node
-            </button>
-            <button type="button" onClick={relayout} disabled={view == null || view.nodes.length === 0}>
-              Auto layout
-            </button>
+      {view != null && reviewing != null ? (
+        <ProposalReview
+          key={reviewing}
+          graphId={view.graph.id}
+          proposalId={reviewing}
+          versions={versions}
+          draft={view}
+          onClose={() => {
+            setReviewing(null);
+            void refresh(view.graph.id);
+          }}
+          onApplied={(message) => {
+            setReviewing(null);
+            void refresh(view.graph.id).then(() => setNotice(message));
+          }}
+        />
+      ) : (
+        <>
+        <main className="canvas-pane">
+          <div className="toolbar">
+            <div className="graph-title">{view?.graph.name ?? "No graph selected"}</div>
+            <div className="toolbar-actions">
+              <button type="button" onClick={() => void addNode()} disabled={view == null}>
+                Add node
+              </button>
+              <button type="button" onClick={relayout} disabled={view == null || view.nodes.length === 0}>
+                Auto layout
+              </button>
+            </div>
           </div>
-        </div>
-        {errors.length > 0 && (
-          <ul className="errors">
-            {errors.map((error) => (
-              <li key={error}>{error}</li>
-            ))}
-          </ul>
-        )}
-        <div className="canvas">
-          {view == null ? (
-            <p className="empty">Pick a graph on the left, or add a new one.</p>
-          ) : (
-            <ReactFlowProvider key={view.graph.id}>
-              <GraphCanvas
-                view={view}
-                selection={selection}
-                onSelect={setSelection}
-                onMove={move}
-                onConnect={(source, target) => void connect(source, target)}
-                onRemove={remove}
-              />
-            </ReactFlowProvider>
+          {errors.length > 0 && (
+            <ul className="errors">
+              {errors.map((error) => (
+                <li key={error}>{error}</li>
+              ))}
+            </ul>
           )}
-        </div>
-      </main>
-      <aside className="inspector">
-        {view == null || actions == null ? <p className="hint">No graph selected.</p> : <Inspector view={view} versions={versions} notice={notice} selection={selection} actions={actions} />}
-      </aside>
+          <div className="canvas">
+            {view == null ? (
+              <p className="empty">Pick a graph on the left, or add a new one.</p>
+            ) : (
+              <ReactFlowProvider key={view.graph.id}>
+                <GraphCanvas
+                  view={view}
+                  selection={selection}
+                  onSelect={setSelection}
+                  onMove={move}
+                  onConnect={(source, target) => void connect(source, target)}
+                  onRemove={remove}
+                />
+              </ReactFlowProvider>
+            )}
+          </div>
+        </main>
+        <aside className="inspector">
+          {view == null || actions == null ? (
+            <p className="hint">No graph selected.</p>
+          ) : (
+            <Inspector view={view} versions={versions} proposals={proposals} notice={notice} selection={selection} actions={actions} />
+          )}
+        </aside>
+        </>
+      )}
     </div>
   );
 };

@@ -2,6 +2,8 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import { StoreError, type GraphStore } from "./db.ts";
 import {
+  ApplyInput,
+  ApplyResult,
   Edge,
   EdgeInput,
   EdgePatch,
@@ -19,6 +21,10 @@ import {
   NodePatch,
   PlaceNodeInput,
   Positions,
+  Proposal,
+  ProposalDiff,
+  ProposalInput,
+  ProposalSummary,
 } from "./schemas.ts";
 
 const pathParam = (name: string) => z.string().openapi({ param: { name, in: "path" } });
@@ -30,6 +36,15 @@ const GraphVersionParams = z.object({
   version: z
     .union([z.literal("latest"), z.coerce.number().int().positive()], { error: "The version must be a positive number or latest." })
     .openapi({ param: { name: "version", in: "path" }, example: 3 }),
+});
+const ProposalParams = z.object({ id: pathParam("id"), proposalId: pathParam("proposalId") });
+const DiffQuery = z.object({
+  against: z
+    .union([z.literal("latest"), z.literal("draft"), z.coerce.number().int().positive()], {
+      error: "against must be latest, draft or a positive version number.",
+    })
+    .optional()
+    .openapi({ param: { name: "against", in: "query" }, example: "latest" }),
 });
 const GraphEdgeParams = z.object({ id: pathParam("id"), edgeId: pathParam("edgeId") });
 
@@ -43,7 +58,7 @@ const body = <T extends z.ZodType>(schema: T) => ({ body: { content: { "applicat
 const errors = {
   400: json(ErrorBody, "The request is not valid."),
   404: json(ErrorBody, "A graph, node or edge in the path does not exist."),
-  409: json(ErrorBody, "The graph name is already used."),
+  409: json(ErrorBody, "The graph name is already used, or the proposal is not open."),
 };
 
 const noContent = { 204: { description: "Done." } };
@@ -51,7 +66,7 @@ const noContent = { 204: { description: "Done." } };
 const route = <const T extends Parameters<typeof createRoute>[0]>(config: T) =>
   createRoute({ ...config, responses: { ...errors, ...config.responses } });
 
-const tag = { nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"] };
+const tag = { nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], proposals: ["Proposals"] };
 
 export const createApi = (store: GraphStore) => {
   const app = new OpenAPIHono({
@@ -348,6 +363,106 @@ export const createApi = (store: GraphStore) => {
         const { id, version } = c.req.valid("param");
         return c.json(store.getVersion(id, version), 200);
       },
+    )
+    .openapi(
+      route({
+        method: "get",
+        path: "/api/graphs/{id}/proposals",
+        tags: tag.proposals,
+        summary: "List the proposals for a graph",
+        request: { params: IdParams },
+        responses: { 200: json(z.array(ProposalSummary), "Every proposal, newest first.") },
+      }),
+      (c) => c.json(store.listProposals(c.req.valid("param").id), 200),
+    )
+    .openapi(
+      route({
+        method: "post",
+        path: "/api/graphs/{id}/proposals",
+        tags: tag.proposals,
+        summary: "Propose a change to a graph",
+        description:
+          "Saves a proposed version of the graph without changing the graph. Send the full proposed graph: every node and edge it must hold. Start from GET /api/graphs/{id} and change what you need. Use existing ids to keep or change existing nodes and edges, and new keys for new ones. Compare the proposal with GET .../diff, then apply it.",
+        request: { params: IdParams, ...body(ProposalInput) },
+        responses: { 200: json(Proposal, "The new, open proposal.") },
+      }),
+      (c) => c.json(store.createProposal(c.req.valid("param").id, c.req.valid("json")), 200),
+    )
+    .openapi(
+      route({
+        method: "get",
+        path: "/api/graphs/{id}/proposals/{proposalId}",
+        tags: tag.proposals,
+        summary: "Get a proposal",
+        request: { params: ProposalParams },
+        responses: { 200: json(Proposal, "The proposal with its proposed graph.") },
+      }),
+      (c) => {
+        const { id, proposalId } = c.req.valid("param");
+        return c.json(store.getProposal(id, proposalId), 200);
+      },
+    )
+    .openapi(
+      route({
+        method: "put",
+        path: "/api/graphs/{id}/proposals/{proposalId}",
+        tags: tag.proposals,
+        summary: "Revise an open proposal",
+        description: "Replaces the proposed graph and its details. The base version becomes the latest published version.",
+        request: { params: ProposalParams, ...body(ProposalInput) },
+        responses: { 200: json(Proposal, "The revised proposal.") },
+      }),
+      (c) => {
+        const { id, proposalId } = c.req.valid("param");
+        return c.json(store.reviseProposal(id, proposalId, c.req.valid("json")), 200);
+      },
+    )
+    .openapi(
+      route({
+        method: "get",
+        path: "/api/graphs/{id}/proposals/{proposalId}/diff",
+        tags: tag.proposals,
+        summary: "Compare a proposal with a version of the graph",
+        description:
+          "Lists what the proposal adds, removes and changes. against is latest (the default) for the latest published version, a version number, or draft for the editable graph. Positions are not changes; a node that only moved has moved true.",
+        request: { params: ProposalParams, query: DiffQuery },
+        responses: { 200: json(ProposalDiff, "The changes from the base to the proposal.") },
+      }),
+      (c) => {
+        const { id, proposalId } = c.req.valid("param");
+        return c.json(store.diffProposal(id, proposalId, c.req.valid("query").against ?? "latest"), 200);
+      },
+    )
+    .openapi(
+      route({
+        method: "post",
+        path: "/api/graphs/{id}/proposals/{proposalId}/apply",
+        tags: tag.proposals,
+        summary: "Apply a proposal to the graph",
+        description:
+          "Makes the editable graph equal to the proposal, and replaces edits that are not published. A change to an existing node or edge applies in every graph that holds it. Set publish to also publish a new version.",
+        request: { params: ProposalParams, ...body(ApplyInput) },
+        responses: { 200: json(ApplyResult, "The applied proposal, and the new version when publish is set.") },
+      }),
+      (c) => {
+        const { id, proposalId } = c.req.valid("param");
+        return c.json(store.applyProposal(id, proposalId, c.req.valid("json").publish ?? false), 200);
+      },
+    )
+    .openapi(
+      route({
+        method: "post",
+        path: "/api/graphs/{id}/proposals/{proposalId}/discard",
+        tags: tag.proposals,
+        summary: "Discard a proposal",
+        description: "The graph does not change. The proposal stays in the list as discarded.",
+        request: { params: ProposalParams },
+        responses: { 200: json(Proposal, "The discarded proposal.") },
+      }),
+      (c) => {
+        const { id, proposalId } = c.req.valid("param");
+        return c.json(store.discardProposal(id, proposalId), 200);
+      },
     );
 
   app.doc31("/openapi.json", {
@@ -356,7 +471,7 @@ export const createApi = (store: GraphStore) => {
       title: "graphs API",
       version: "4.1.0",
       description:
-        "A labeled property graph. Nodes and edges are shared entities; a graph is a named subgraph that holds nodes, their positions, and edges. A published version is a copy of a graph that does not change.",
+        "A labeled property graph. Nodes and edges are shared entities; a graph is a named subgraph that holds nodes, their positions, and edges. A published version is a copy of a graph that does not change. A proposal is a proposed graph that you compare with a version before you apply it.",
     },
   });
   app.get("/docs", Scalar({ url: "/openapi.json", pageTitle: "graphs API", showDeveloperTools: "never" }));

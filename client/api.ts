@@ -32,6 +32,17 @@ export const api = {
   view: (id: string) => unwrap(graphs[":id"].$get({ param: { id } })),
   publish: (id: string) => unwrap(graphs[":id"].versions.$post({ param: { id } })),
   listVersions: (id: string) => unwrap(graphs[":id"].versions.$get({ param: { id } })),
+  getVersion: (id: string, version: number | "latest") =>
+    unwrap(graphs[":id"].versions[":version"].$get({ param: { id, version: String(version) } })),
+
+  listProposals: (id: string) => unwrap(graphs[":id"].proposals.$get({ param: { id } })),
+  getProposal: (id: string, proposalId: string) => unwrap(graphs[":id"].proposals[":proposalId"].$get({ param: { id, proposalId } })),
+  diffProposal: (id: string, proposalId: string, against: number | "latest" | "draft") =>
+    unwrap(graphs[":id"].proposals[":proposalId"].diff.$get({ param: { id, proposalId }, query: { against: String(against) } })),
+  applyProposal: (id: string, proposalId: string, publish: boolean) =>
+    unwrap(graphs[":id"].proposals[":proposalId"].apply.$post({ param: { id, proposalId }, json: { publish } })),
+  discardProposal: (id: string, proposalId: string) =>
+    unwrap(graphs[":id"].proposals[":proposalId"].discard.$post({ param: { id, proposalId } })),
 
   listNodes: () => unwrap(nodes.$get()),
   updateNode: (id: string, input: Partial<NodeInput>) => unwrap(nodes[":id"].$patch({ param: { id }, json: input })),

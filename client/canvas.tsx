@@ -19,15 +19,19 @@ import {
 import { useEffect, useMemo } from "react";
 import { assignParallelSlots, edgePath, loopPath, type Box, type ParallelSlot } from "../geometry.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
-import type { GraphView, Position } from "../model.ts";
+import type { ChangeStatus, GraphContent, Position } from "../model.ts";
 
 export type Selection = { kind: "node" | "edge"; id: string } | null;
 
-type EntityNode = Node<{ name: string; labels: string[] }, "entity">;
-type FloatingEdge = Edge<{ slot: ParallelSlot; flip: boolean }, "floating">;
+export type Marks = { nodes: Map<string, ChangeStatus>; edges: Map<string, ChangeStatus> };
+
+type EntityNode = Node<{ name: string; labels: string[]; mark: ChangeStatus | undefined }, "entity">;
+type FloatingEdge = Edge<{ slot: ParallelSlot; flip: boolean; mark: ChangeStatus | undefined }, "floating">;
+
+const markClass = (mark: ChangeStatus | undefined) => (mark == null ? "" : ` mark-${mark}`);
 
 const EntityNodeView = ({ data, selected }: NodeProps<EntityNode>) => (
-  <div className={`entity${selected ? " selected" : ""}`} style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}>
+  <div className={`entity${selected ? " selected" : ""}${markClass(data.mark)}`} style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}>
     <Handle id="in" type="target" position={HandlePosition.Left} className="target-handle" />
     <div className="entity-name">{data.name}</div>
     {data.labels.length > 0 && (
@@ -61,11 +65,11 @@ const FloatingEdgeView = ({ id, source, target, data, label, markerEnd, selected
   const geometry = source === target ? loopPath(sourceBox, data.slot) : edgePath(sourceBox, targetBox, data.slot, data.flip);
   return (
     <>
-      <BaseEdge id={id} path={geometry.path} markerEnd={markerEnd} className={selected ? "edge-selected" : undefined} />
+      <BaseEdge id={id} path={geometry.path} markerEnd={markerEnd} className={`${selected ? "edge-selected" : ""}${markClass(data.mark)}`} />
       {label != null && label !== "" && (
         <EdgeLabelRenderer>
           <div
-            className={`edge-label${selected ? " selected" : ""}`}
+            className={`edge-label${selected ? " selected" : ""}${markClass(data.mark)}`}
             style={{ transform: `translate(-50%, -50%) translate(${geometry.label.x}px, ${geometry.label.y}px)` }}
           >
             {label}
@@ -79,16 +83,16 @@ const FloatingEdgeView = ({ id, source, target, data, label, markerEnd, selected
 const NODE_TYPES = { entity: EntityNodeView };
 const EDGE_TYPES = { floating: FloatingEdgeView };
 
-const toFlowNodes = (view: GraphView, selection: Selection): EntityNode[] =>
+const toFlowNodes = (view: GraphContent, selection: Selection, marks: Marks | undefined): EntityNode[] =>
   view.nodes.map((node) => ({
     id: node.id,
     type: "entity",
     position: node.position ?? { x: 0, y: 0 },
-    data: { name: node.name, labels: node.labels },
+    data: { name: node.name, labels: node.labels, mark: marks?.nodes.get(node.id) },
     selected: selection?.kind === "node" && selection.id === node.id,
   }));
 
-const toFlowEdges = (view: GraphView, selection: Selection): FloatingEdge[] => {
+const toFlowEdges = (view: GraphContent, selection: Selection, marks: Marks | undefined): FloatingEdge[] => {
   const slots = assignParallelSlots(view.edges);
   return view.edges.map((edge) => ({
     id: edge.id,
@@ -99,7 +103,7 @@ const toFlowEdges = (view: GraphView, selection: Selection): FloatingEdge[] => {
     targetHandle: "in",
     label: edge.label,
     markerEnd: edge.directed ? { type: MarkerType.ArrowClosed, width: 18, height: 18 } : undefined,
-    data: { slot: slots.get(edge.id) ?? { index: 0, count: 1 }, flip: edge.source > edge.target },
+    data: { slot: slots.get(edge.id) ?? { index: 0, count: 1 }, flip: edge.source > edge.target, mark: marks?.edges.get(edge.id) },
     selected: selection?.kind === "edge" && selection.id === edge.id,
   }));
 };
@@ -111,17 +115,21 @@ export const GraphCanvas = ({
   onMove,
   onConnect,
   onRemove,
+  marks,
+  readOnly = false,
 }: {
-  view: GraphView;
+  view: GraphContent;
   selection: Selection;
   onSelect: (selection: Selection) => void;
-  onMove: (positions: Record<string, Position>) => void;
-  onConnect: (source: string, target: string) => void;
-  onRemove: (nodeIds: string[], edgeIds: string[]) => void;
+  onMove?: (positions: Record<string, Position>) => void;
+  onConnect?: (source: string, target: string) => void;
+  onRemove?: (nodeIds: string[], edgeIds: string[]) => void;
+  marks?: Marks;
+  readOnly?: boolean;
 }) => {
-  const [nodes, setNodes, onNodesChange] = useNodesState<EntityNode>(toFlowNodes(view, selection));
-  useEffect(() => setNodes(toFlowNodes(view, selection)), [view, selection, setNodes]);
-  const edges = useMemo(() => toFlowEdges(view, selection), [view, selection]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<EntityNode>(toFlowNodes(view, selection, marks));
+  useEffect(() => setNodes(toFlowNodes(view, selection, marks)), [view, selection, marks, setNodes]);
+  const edges = useMemo(() => toFlowEdges(view, selection, marks), [view, selection, marks]);
 
   return (
     <ReactFlow
@@ -130,24 +138,26 @@ export const GraphCanvas = ({
       nodeTypes={NODE_TYPES}
       edgeTypes={EDGE_TYPES}
       onNodesChange={onNodesChange}
+      nodesDraggable={!readOnly}
+      nodesConnectable={!readOnly}
       connectionMode={ConnectionMode.Loose}
       connectionRadius={40}
       onConnect={({ source, target }) => {
-        if (source != null && target != null) onConnect(source, target);
+        if (source != null && target != null) onConnect?.(source, target);
       }}
       onNodeClick={(_, node) => onSelect({ kind: "node", id: node.id })}
       onEdgeClick={(_, edge) => onSelect({ kind: "edge", id: edge.id })}
       onPaneClick={() => onSelect(null)}
       onNodeDragStop={(_, __, dragged) =>
-        onMove(Object.fromEntries(dragged.map((node) => [node.id, { x: Math.round(node.position.x), y: Math.round(node.position.y) }])))
+        onMove?.(Object.fromEntries(dragged.map((node) => [node.id, { x: Math.round(node.position.x), y: Math.round(node.position.y) }])))
       }
       onDelete={({ nodes: removedNodes, edges: removedEdges }) =>
-        onRemove(
+        onRemove?.(
           removedNodes.map(({ id }) => id),
           removedEdges.map(({ id }) => id),
         )
       }
-      deleteKeyCode={["Backspace", "Delete"]}
+      deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
       fitView
       fitViewOptions={{ padding: 0.25, maxZoom: 1.2 }}
       minZoom={0.2}

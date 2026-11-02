@@ -23,6 +23,23 @@ Apps that run a graph, for example a voice app that walks a decision tree, must 
 - `GET /api/graphs/{id}/versions/{version}` returns one version. Use `latest` for the newest.
 - `hash` is a SHA-256 of the graph content (name, description, nodes and edges, without positions and timestamps).
 
+### Proposals
+
+A proposal is a changed copy of a graph that you review before it changes the graph. Claude (or any API client) makes one; you compare it with a published version and then apply or discard it.
+
+| Field | Use |
+|---|---|
+| `title`, `rationale`, `workItem` | What the change is, why, and the ticket, document or link it is for. |
+| `content` | The full proposed graph: name, description, nodes with positions, and edges. |
+| `baseVersion` | The latest published version when the proposal was saved. |
+| `status` | `open`, `applied` or `discarded`. Only an open proposal can change. |
+
+1. Read the graph with `GET /api/graphs/{id}`.
+2. Send the full proposed graph to `POST /api/graphs/{id}/proposals`. Use existing ids to keep or change nodes and edges, and new keys (for example `review-step`) for new ones. Omitted fields keep the existing value. A node or edge that is not in the list leaves the graph.
+3. Read the changes with `GET /api/graphs/{id}/proposals/{proposalId}/diff`. `against` is `latest` (the default), a version number, or `draft`.
+4. In the app, open the proposal from **Proposals** in the inspector. The **Ledger** tab lists each added, removed and changed node and edge, with the fields before and after. The **Graph** tab shows both graphs on one canvas in color. A warning shows when a changed node is also in other graphs, because the change applies there too.
+5. **Apply and publish** makes the graph equal to the proposal and publishes a new version. **Apply to draft** changes only the editable graph. Apply replaces edits that are not published. Use `PUT` on the proposal to revise it.
+
 Not supported: hyperedges (one edge with more than two nodes), nested nodes, and schemas that limit which labels can connect.
 
 ## Run

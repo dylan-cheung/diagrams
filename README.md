@@ -8,12 +8,28 @@ The app uses the labeled property graph model of ISO GQL (ISO/IEC 39075). In gra
 
 | Entity | Fields | Rules |
 |---|---|---|
-| Node | `id`, `name`, `description`, `labels[]`, `properties{}` | The core entity. A node does not store its edges. The description is optional. |
-| Edge | `id`, `source`, `target`, `directed`, `label`, `properties{}` | Its own entity. Deleting a node deletes its edges. |
+| Node | `id`, `name`, `description`, `type`, `intent`, `status`, `labels[]`, `properties{}` | The core entity. A node does not store its edges. All fields except the name are optional. |
+| Edge | `id`, `source`, `target`, `directed`, `type`, `label`, `description`, `intent`, `status`, `properties{}` | Its own entity. Deleting a node deletes its edges. The editor shows the label, or the type name when the label is empty. |
 | Graph | `id`, `name`, `description` + its nodes (with `x`, `y`) and edges | A named subgraph. Nodes and edges are shared, so one node can be in many graphs with a different position in each. A graph can include an edge only if it includes both nodes. The description says what the graph is for. It is required when you create a graph. |
 | Version | `graphId`, `version`, `hash`, `publishedAt`, `view` | A published copy of a graph that does not change. `view` holds the graph, its nodes with positions, and its edges as they were at publish time. Versions stay after the graph is deleted. |
 
-Property values are strings, numbers, booleans or `null`.
+Property values are strings, numbers, booleans or `null`. Use `properties` for extensible metadata.
+
+### Design vocabulary
+
+The vocabulary is the set of node types, relationship types and lifecycle statuses that the editor and API clients (for example Claude) share. `GET /api/vocabulary` returns it.
+
+| Term | Default ids |
+|---|---|
+| Node type (`type` on a node) | `service`, `module`, `database`, `external-system`, `user-interface`, `decision` |
+| Relationship type (`type` on an edge) | `calls`, `publishes-event`, `consumes-event`, `reads-from`, `writes-to`, `depends-on` |
+| Lifecycle status (`status` on a node or an edge) | `proposed`, `planned`, `active`, `deprecated`, `retired` |
+
+- `type` and `status` hold a vocabulary id or `null`. The server rejects an id that is not in the vocabulary, for every route that writes nodes, edges or proposals. The editor uses the same API, so the same rules apply to it.
+- `intent` says why the element exists. `description` says what it is.
+- The vocabulary holds meaning only. The editor sets the look of each default type and status in `client/styles.css`. A type without a style shows in the default look.
+- To change the vocabulary, set `VOCABULARY` to a JSON file with `nodeTypes`, `relationshipTypes` and `statuses`. Each is a list of `{ "id", "name", "description" }`. An id uses lowercase letters, digits and hyphens. The defaults are in `vocabulary.ts`.
+- When you remove an id from the vocabulary, nodes and edges that use it keep it. The editor marks it as not in the vocabulary.
 
 ### Published versions
 
@@ -56,6 +72,7 @@ The app opens at http://127.0.0.1:4848.
 | `PORT` | `4848` | Server port |
 | `GRAPH_DB` | `~/Library/Application Support/graphs/graphs.sqlite` | Database file |
 | `OPEN_BROWSER` | on | Set `0` to not open the browser |
+| `VOCABULARY` | the defaults in `vocabulary.ts` | A JSON file with the design vocabulary |
 
 `bun run build` makes one binary, `dist/graphs`, that holds the server and the UI.
 
@@ -63,7 +80,7 @@ The app opens at http://127.0.0.1:4848.
 
 - Add a graph on the left with a name and a description of its purpose. Edit both in the inspector. Add nodes with **Add node**, or add existing nodes from the **Node library**.
 - Drag from a dot on one node to a dot on another node to add an edge. Drag to the other dot on the same node to add a loop.
-- Select a node or an edge to edit it in the inspector. **Remove from graph** keeps it in the library; **Delete everywhere** deletes it from every graph.
+- Select a node or an edge to edit it in the inspector. Set its type, status, description and intent there. **Remove from graph** keeps it in the library; **Delete everywhere** deletes it from every graph.
 - Press Delete or Backspace to remove the selection from the graph.
 - **Auto layout** places all nodes with dagre. New nodes without a position are placed below the others. Dragged positions are saved for each graph.
 

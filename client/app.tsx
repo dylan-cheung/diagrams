@@ -1,11 +1,13 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { autoLayout } from "../layout.ts";
-import type { GraphNode, GraphSummary, GraphVersionSummary, GraphView, Position, ProposalSummary } from "../model.ts";
+import type { GraphNode, GraphSummary, GraphVersionSummary, GraphView, Position, ProposalSummary, Vocabulary } from "../model.ts";
+import { termName } from "../vocabulary.ts";
 import { ApiError, api } from "./api.ts";
 import { GraphCanvas, type Selection } from "./canvas.tsx";
 import { Inspector, type InspectorActions } from "./inspector.tsx";
 import { ProposalReview } from "./review.tsx";
+import { VocabularyContext } from "./vocabulary.ts";
 
 const withPositions = (view: GraphView, positions: Record<string, Position>): GraphView => ({
   ...view,
@@ -25,6 +27,7 @@ export const App = () => {
   const [newGraphName, setNewGraphName] = useState("");
   const [newGraphDescription, setNewGraphDescription] = useState("");
   const [search, setSearch] = useState("");
+  const [vocabulary, setVocabulary] = useState<Vocabulary>({ nodeTypes: [], relationshipTypes: [], statuses: [] });
 
   const loadView = useCallback(async (graphId: string) => {
     const next = await api.view(graphId);
@@ -77,12 +80,14 @@ export const App = () => {
 
   useEffect(() => {
     void refresh(null);
+    void api.vocabulary().then(setVocabulary);
   }, [refresh]);
 
   const graphId = view?.graph.id ?? null;
   const inGraph = useMemo(() => new Set(view?.nodes.map(({ id }) => id) ?? []), [view]);
+  const tagsOf = (node: GraphNode) => [termName(vocabulary.nodeTypes, node.type), ...node.labels].filter((tag) => tag != null);
   const filteredLibrary = library.filter((node) =>
-    `${node.name} ${node.labels.join(" ")}`.toLowerCase().includes(search.trim().toLowerCase()),
+    `${node.name} ${tagsOf(node).join(" ")}`.toLowerCase().includes(search.trim().toLowerCase()),
   );
 
   const openGraph = (id: string) => {
@@ -161,121 +166,123 @@ export const App = () => {
   };
 
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <section className="sidebar-section">
-          <h1>Graphs</h1>
-          <form className="graph-form" onSubmit={createGraph}>
-            <input placeholder="New graph name" value={newGraphName} onChange={(e) => setNewGraphName(e.target.value)} required />
-            <textarea
-              placeholder="What is this graph for?"
-              rows={2}
-              value={newGraphDescription}
-              onChange={(e) => setNewGraphDescription(e.target.value)}
-              required
-            />
-            <button type="submit">Add</button>
-          </form>
-          <ul className="list">
-            {graphs.map((graph) => (
-              <li key={graph.id}>
-                <button type="button" className={graph.id === graphId ? "active" : undefined} onClick={() => openGraph(graph.id)}>
-                  <span>{graph.name}</span>
-                  {graph.description !== "" && <span className="description">{graph.description}</span>}
-                  <span className="meta">
-                    {graph.nodeCount} nodes · {graph.edgeCount} edges
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-        <section className="sidebar-section">
-          <h1>Node library</h1>
-          <input placeholder="Search nodes and labels" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <ul className="list">
-            {filteredLibrary.map((node) => (
-              <li key={node.id} className="library-item">
-                <span>
-                  {node.name}
-                  {node.labels.length > 0 && <span className="meta"> · {node.labels.join(", ")}</span>}
-                </span>
-                {graphId != null &&
-                  (inGraph.has(node.id) ? (
-                    <span className="meta">in graph</span>
-                  ) : (
-                    <button type="button" onClick={() => void run(() => api.addNodeToGraph(graphId, node.id, null))}>
-                      Add
-                    </button>
-                  ))}
-              </li>
-            ))}
-          </ul>
-        </section>
-      </aside>
-      {view != null && reviewing != null ? (
-        <ProposalReview
-          key={reviewing}
-          graphId={view.graph.id}
-          proposalId={reviewing}
-          versions={versions}
-          draft={view}
-          onClose={() => {
-            setReviewing(null);
-            void refresh(view.graph.id);
-          }}
-          onApplied={(message) => {
-            setReviewing(null);
-            void refresh(view.graph.id).then(() => setNotice(message));
-          }}
-        />
-      ) : (
-        <>
-        <main className="canvas-pane">
-          <div className="toolbar">
-            <div className="graph-title">{view?.graph.name ?? "No graph selected"}</div>
-            <div className="toolbar-actions">
-              <button type="button" onClick={() => void addNode()} disabled={view == null}>
-                Add node
-              </button>
-              <button type="button" onClick={relayout} disabled={view == null || view.nodes.length === 0}>
-                Auto layout
-              </button>
-            </div>
-          </div>
-          {errors.length > 0 && (
-            <ul className="errors">
-              {errors.map((error) => (
-                <li key={error}>{error}</li>
+    <VocabularyContext value={vocabulary}>
+      <div className="app">
+        <aside className="sidebar">
+          <section className="sidebar-section">
+            <h1>Graphs</h1>
+            <form className="graph-form" onSubmit={createGraph}>
+              <input placeholder="New graph name" value={newGraphName} onChange={(e) => setNewGraphName(e.target.value)} required />
+              <textarea
+                placeholder="What is this graph for?"
+                rows={2}
+                value={newGraphDescription}
+                onChange={(e) => setNewGraphDescription(e.target.value)}
+                required
+              />
+              <button type="submit">Add</button>
+            </form>
+            <ul className="list">
+              {graphs.map((graph) => (
+                <li key={graph.id}>
+                  <button type="button" className={graph.id === graphId ? "active" : undefined} onClick={() => openGraph(graph.id)}>
+                    <span>{graph.name}</span>
+                    {graph.description !== "" && <span className="description">{graph.description}</span>}
+                    <span className="meta">
+                      {graph.nodeCount} nodes · {graph.edgeCount} edges
+                    </span>
+                  </button>
+                </li>
               ))}
             </ul>
-          )}
-          <div className="canvas">
-            {view == null ? (
-              <p className="empty">Pick a graph on the left, or add a new one.</p>
-            ) : (
-              <ReactFlowProvider key={view.graph.id}>
-                <GraphCanvas
-                  view={view}
-                  selection={selection}
-                  onSelect={setSelection}
-                  onMove={move}
-                  onConnect={(source, target) => void connect(source, target)}
-                  onRemove={remove}
-                />
-              </ReactFlowProvider>
-            )}
-          </div>
-        </main>
-        <aside className="inspector">
-          {view == null || actions == null ? (
-            <p className="hint">No graph selected.</p>
-          ) : (
-            <Inspector view={view} versions={versions} proposals={proposals} notice={notice} selection={selection} actions={actions} />
-          )}
+          </section>
+          <section className="sidebar-section">
+            <h1>Node library</h1>
+            <input placeholder="Search nodes, types and labels" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <ul className="list">
+              {filteredLibrary.map((node) => (
+                <li key={node.id} className="library-item">
+                  <span>
+                    {node.name}
+                    {tagsOf(node).length > 0 && <span className="meta"> · {tagsOf(node).join(", ")}</span>}
+                  </span>
+                  {graphId != null &&
+                    (inGraph.has(node.id) ? (
+                      <span className="meta">in graph</span>
+                    ) : (
+                      <button type="button" onClick={() => void run(() => api.addNodeToGraph(graphId, node.id, null))}>
+                        Add
+                      </button>
+                    ))}
+                </li>
+              ))}
+            </ul>
+          </section>
         </aside>
-        </>
-      )}
-    </div>
+        {view != null && reviewing != null ? (
+          <ProposalReview
+            key={reviewing}
+            graphId={view.graph.id}
+            proposalId={reviewing}
+            versions={versions}
+            draft={view}
+            onClose={() => {
+              setReviewing(null);
+              void refresh(view.graph.id);
+            }}
+            onApplied={(message) => {
+              setReviewing(null);
+              void refresh(view.graph.id).then(() => setNotice(message));
+            }}
+          />
+        ) : (
+          <>
+          <main className="canvas-pane">
+            <div className="toolbar">
+              <div className="graph-title">{view?.graph.name ?? "No graph selected"}</div>
+              <div className="toolbar-actions">
+                <button type="button" onClick={() => void addNode()} disabled={view == null}>
+                  Add node
+                </button>
+                <button type="button" onClick={relayout} disabled={view == null || view.nodes.length === 0}>
+                  Auto layout
+                </button>
+              </div>
+            </div>
+            {errors.length > 0 && (
+              <ul className="errors">
+                {errors.map((error) => (
+                  <li key={error}>{error}</li>
+                ))}
+              </ul>
+            )}
+            <div className="canvas">
+              {view == null ? (
+                <p className="empty">Pick a graph on the left, or add a new one.</p>
+              ) : (
+                <ReactFlowProvider key={view.graph.id}>
+                  <GraphCanvas
+                    view={view}
+                    selection={selection}
+                    onSelect={setSelection}
+                    onMove={move}
+                    onConnect={(source, target) => void connect(source, target)}
+                    onRemove={remove}
+                  />
+                </ReactFlowProvider>
+              )}
+            </div>
+          </main>
+          <aside className="inspector">
+            {view == null || actions == null ? (
+              <p className="hint">No graph selected.</p>
+            ) : (
+              <Inspector view={view} versions={versions} proposals={proposals} notice={notice} selection={selection} actions={actions} />
+            )}
+          </aside>
+          </>
+        )}
+      </div>
+    </VocabularyContext>
   );
 };

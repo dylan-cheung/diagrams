@@ -1,12 +1,22 @@
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import index from "./index.html";
 import { createApi } from "./api.ts";
 import { openGraphStore, type GraphStore } from "./db.ts";
+import { Vocabulary } from "./schemas.ts";
+import { DEFAULT_VOCABULARY } from "./vocabulary.ts";
 
 const PORT = Number(process.env.PORT ?? 4848);
 const DB_PATH =
   process.env.GRAPH_DB ?? join(homedir(), "Library", "Application Support", "graphs", "graphs.sqlite");
+
+const loadVocabulary = (path: string | undefined): Vocabulary => {
+  if (path == null || path === "") return DEFAULT_VOCABULARY;
+  const result = Vocabulary.safeParse(JSON.parse(readFileSync(path, "utf8")));
+  if (!result.success) throw new Error(`The vocabulary file ${path} is not valid: ${result.error.issues.map(({ message }) => message).join(" ")}`);
+  return result.data;
+};
 
 export const createServer = (store: GraphStore, port = PORT) => {
   const api = createApi(store);
@@ -23,7 +33,7 @@ export const createServer = (store: GraphStore, port = PORT) => {
 };
 
 if (import.meta.main) {
-  const server = createServer(openGraphStore(DB_PATH));
+  const server = createServer(openGraphStore(DB_PATH, loadVocabulary(process.env.VOCABULARY)));
   console.log(`Graph app on ${server.url} (API docs at ${new URL("/docs", server.url)}, database ${DB_PATH})`);
   if (process.env.OPEN_BROWSER !== "0") Bun.spawn(["open", server.url.href]);
 }

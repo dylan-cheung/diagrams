@@ -11,6 +11,12 @@
   --danger-soft: #f8e3e3;
   --node: #ffffff;
   --chip: #eef1f6;
+  --type-service: #2f5bd3;
+  --type-module: #6b4fc4;
+  --type-database: #1f7a6d;
+  --type-external: #8a5a12;
+  --type-ui: #b2457a;
+  --type-decision: #a5670d;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
@@ -30,6 +36,12 @@
     --danger-soft: #3a1c1e;
     --node: #222835;
     --chip: #2a3140;
+    --type-service: #7d9cf5;
+    --type-module: #b09cf0;
+    --type-database: #5fc4b3;
+    --type-external: #d9a95e;
+    --type-ui: #ec8fbd;
+    --type-decision: #f0b45a;
     color-scheme: dark;
   }
 }
@@ -50,6 +62,7 @@ body,
 
 button,
 input,
+select,
 textarea {
   font: inherit;
   color: inherit;
@@ -81,6 +94,7 @@ button.icon {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   min-width: 0;
@@ -344,6 +358,86 @@ textarea {
   border-radius: 999px;
   padding: 0 7px;
   font-size: 11px;
+}
+
+.entity-design {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--type-color, var(--muted));
+}
+
+.entity-status {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.entity.type-service {
+  --type-color: var(--type-service);
+}
+
+.entity.type-module {
+  --type-color: var(--type-module);
+}
+
+.entity.type-database {
+  --type-color: var(--type-database);
+  border-radius: 8px 8px 18px 18px;
+}
+
+.entity.type-external-system {
+  --type-color: var(--type-external);
+  background: var(--chip);
+}
+
+.entity.type-user-interface {
+  --type-color: var(--type-ui);
+}
+
+.entity.type-decision {
+  --type-color: var(--type-decision);
+  border-radius: 18px;
+}
+
+.entity.status-proposed,
+.entity.status-planned {
+  border-style: dashed;
+}
+
+.entity.status-deprecated {
+  opacity: 0.7;
+}
+
+.entity.status-retired {
+  opacity: 0.45;
+}
+
+.entity.status-retired .entity-name {
+  text-decoration: line-through;
+}
+
+.react-flow__edge-path.type-publishes-event,
+.react-flow__edge-path.type-consumes-event {
+  stroke-dasharray: 8 4;
+}
+
+.react-flow__edge-path.type-depends-on {
+  stroke-dasharray: 2 4;
+}
+
+.react-flow__edge-path.status-proposed,
+.react-flow__edge-path.status-planned {
+  stroke-dasharray: 4 4;
+}
+
+.react-flow__edge-path.status-deprecated,
+.react-flow__edge-path.status-retired,
+.edge-label.status-retired {
+  opacity: 0.5;
 }
 
 .react-flow__handle.source-handle,

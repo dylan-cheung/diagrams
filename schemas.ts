@@ -16,6 +16,42 @@ export const Properties = z
 
 const Labels = z.array(z.string()).openapi({ example: ["Person"] });
 
+const TypeId = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]*$/, { error: "A type id uses lowercase letters, digits and hyphens, and starts with a letter." });
+
+const Term = z.object({
+  id: TypeId.openapi({ example: "service" }),
+  name: z.string().trim().min(1, { error: "A vocabulary term needs a name." }).openapi({ example: "Service" }),
+  description: z.string().openapi({ example: "A deployable unit that runs on its own and serves requests." }),
+});
+
+const uniqueIds = (terms: { id: string }[]) => new Set(terms.map(({ id }) => id)).size === terms.length;
+
+const Terms = (name: string) =>
+  z.array(Term).refine(uniqueIds, { error: `Each ${name} needs a different id.` });
+
+export const Vocabulary = z
+  .object({
+    nodeTypes: Terms("node type").openapi({ description: "The semantic types a node can have." }),
+    relationshipTypes: Terms("relationship type").openapi({ description: "The semantic types an edge can have." }),
+    statuses: Terms("lifecycle status").openapi({ description: "The lifecycle statuses a node or an edge can have." }),
+  })
+  .openapi("Vocabulary");
+
+const NodeType = z.string().nullable().openapi({ description: "A node type id from GET /api/vocabulary, or null for no type.", example: "service" });
+
+const RelationshipType = z
+  .string()
+  .nullable()
+  .openapi({ description: "A relationship type id from GET /api/vocabulary, or null for no type.", example: "calls" });
+
+const Status = z.string().nullable().openapi({ description: "A lifecycle status id from GET /api/vocabulary, or null for no status.", example: "active" });
+
+const Intent = z.string().openapi({ description: "Why the element exists: the design goal it serves.", example: "Keep payment state in one place." });
+
+const Metadata = Properties.openapi({ description: "Extensible metadata. Keys are free; values are strings, numbers, booleans or null." });
+
 export const Position = z.object({ x: z.number(), y: z.number() }).openapi("Position", { example: { x: 40, y: 120 } });
 
 export const Node = z
@@ -23,8 +59,11 @@ export const Node = z
     id: Id,
     name: z.string().openapi({ example: "Ada" }),
     description: z.string().openapi({ example: "Leads the payments team." }),
+    type: NodeType,
+    intent: Intent,
+    status: Status,
     labels: Labels,
-    properties: Properties,
+    properties: Metadata,
     createdAt: Timestamp,
     updatedAt: Timestamp,
   })
@@ -36,8 +75,12 @@ export const Edge = z
     source: Id,
     target: Id,
     directed: z.boolean(),
+    type: RelationshipType,
     label: z.string().openapi({ example: "knows" }),
-    properties: Properties,
+    description: z.string(),
+    intent: Intent,
+    status: Status,
+    properties: Metadata,
     createdAt: Timestamp,
     updatedAt: Timestamp,
   })
@@ -78,8 +121,11 @@ export const NodeInput = z
   .object({
     name: Name("A node needs a name."),
     description: z.string().optional().openapi({ example: "Leads the payments team." }),
+    type: NodeType.optional(),
+    intent: Intent.optional(),
+    status: Status.optional(),
     labels: Labels.optional(),
-    properties: Properties.optional(),
+    properties: Metadata.optional(),
   })
   .openapi("NodeInput");
 
@@ -92,8 +138,12 @@ export const EdgeInput = z
     source: z.string().min(1, { error: "An edge needs a source node." }),
     target: z.string().min(1, { error: "An edge needs a target node." }),
     directed: z.boolean().optional(),
+    type: RelationshipType.optional(),
     label: z.string().optional(),
-    properties: Properties.optional(),
+    description: z.string().optional(),
+    intent: Intent.optional(),
+    status: Status.optional(),
+    properties: Metadata.optional(),
   })
   .openapi("EdgeInput");
 
@@ -113,14 +163,28 @@ export const ContentNode = z
     id: Id,
     name: z.string(),
     description: z.string(),
+    type: NodeType,
+    intent: Intent,
+    status: Status,
     labels: Labels,
-    properties: Properties,
+    properties: Metadata,
     position: Position.nullable(),
   })
   .openapi("ContentNode");
 
 export const ContentEdge = z
-  .object({ id: Id, source: Id, target: Id, directed: z.boolean(), label: z.string(), properties: Properties })
+  .object({
+    id: Id,
+    source: Id,
+    target: Id,
+    directed: z.boolean(),
+    type: RelationshipType,
+    label: z.string(),
+    description: z.string(),
+    intent: Intent,
+    status: Status,
+    properties: Metadata,
+  })
   .openapi("ContentEdge");
 
 export const GraphContent = z
@@ -139,8 +203,11 @@ export const ProposedNode = z
     }),
     name: z.string().trim().min(1, { error: "A node needs a name." }).optional(),
     description: z.string().optional(),
+    type: NodeType.optional(),
+    intent: Intent.optional(),
+    status: Status.optional(),
     labels: Labels.optional(),
-    properties: Properties.optional(),
+    properties: Metadata.optional(),
     position: Position.nullable().optional(),
   })
   .openapi("ProposedNode");
@@ -154,8 +221,12 @@ export const ProposedEdge = z
     source: z.string().min(1).optional().openapi({ description: "The id of a node in this proposal." }),
     target: z.string().min(1).optional().openapi({ description: "The id of a node in this proposal." }),
     directed: z.boolean().optional(),
+    type: RelationshipType.optional(),
     label: z.string().optional(),
-    properties: Properties.optional(),
+    description: z.string().optional(),
+    intent: Intent.optional(),
+    status: Status.optional(),
+    properties: Metadata.optional(),
   })
   .openapi("ProposedEdge");
 
@@ -246,6 +317,8 @@ export const ErrorBody = z
 export type PropertyValue = z.infer<typeof PropertyValue>;
 export type Properties = z.infer<typeof Properties>;
 export type Position = z.infer<typeof Position>;
+export type Vocabulary = z.infer<typeof Vocabulary>;
+export type Term = Vocabulary["nodeTypes"][number];
 export type GraphNode = z.infer<typeof Node>;
 export type GraphEdge = z.infer<typeof Edge>;
 export type Graph = z.infer<typeof Graph>;

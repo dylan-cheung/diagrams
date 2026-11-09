@@ -25,6 +25,7 @@ import {
   ProposalDiff,
   ProposalInput,
   ProposalSummary,
+  Vocabulary,
 } from "./schemas.ts";
 
 const pathParam = (name: string) => z.string().openapi({ param: { name, in: "path" } });
@@ -66,7 +67,7 @@ const noContent = { 204: { description: "Done." } };
 const route = <const T extends Parameters<typeof createRoute>[0]>(config: T) =>
   createRoute({ ...config, responses: { ...errors, ...config.responses } });
 
-const tag = { nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], proposals: ["Proposals"] };
+const tag = { vocabulary: ["Vocabulary"], nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], proposals: ["Proposals"] };
 
 export const createApi = (store: GraphStore) => {
   const app = new OpenAPIHono({
@@ -90,6 +91,18 @@ export const createApi = (store: GraphStore) => {
   });
 
   const routes = app
+    .openapi(
+      route({
+        method: "get",
+        path: "/api/vocabulary",
+        tags: tag.vocabulary,
+        summary: "Get the design vocabulary",
+        description:
+          "The node types, relationship types and lifecycle statuses that nodes and edges can use. Requests that use an id that is not in the vocabulary fail with 400. The vocabulary describes meaning only; the editor chooses how each type looks.",
+        responses: { 200: json(Vocabulary, "The vocabulary.") },
+      }),
+      (c) => c.json(store.vocabulary(), 200),
+    )
     .openapi(
       route({ method: "get", path: "/api/nodes", tags: tag.nodes, summary: "List all nodes", responses: { 200: json(z.array(Node), "Every node, by name.") } }),
       (c) => c.json(store.listNodes(), 200),
@@ -469,7 +482,7 @@ export const createApi = (store: GraphStore) => {
     openapi: "3.1.0",
     info: {
       title: "graphs API",
-      version: "4.1.0",
+      version: "4.2.0",
       description:
         "A labeled property graph. Nodes and edges are shared entities; a graph is a named subgraph that holds nodes, their positions, and edges. A published version is a copy of a graph that does not change. A proposal is a proposed graph that you compare with a version before you apply it.",
     },

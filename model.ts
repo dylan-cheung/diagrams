@@ -26,7 +26,13 @@ export type {
   Proposal,
   ProposalInput,
   ProposalSummary,
+  Term,
+  Vocabulary,
 } from "./schemas.ts";
+
+export const NODE_DESIGN_DEFAULTS = { type: null, intent: "", status: null };
+
+export const EDGE_DESIGN_DEFAULTS = { type: null, description: "", intent: "", status: null };
 
 const isPropertyValue = (value: unknown): value is PropertyValue =>
   value === null || ["string", "number", "boolean"].includes(typeof value);

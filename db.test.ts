@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { StoreError, openGraphStore, type GraphStore } from "./db.ts";
+import { StoreError, contentHash, openGraphStore, type GraphStore } from "./db.ts";
 
 let store: GraphStore;
 
@@ -138,7 +138,7 @@ describe("graphs", () => {
     old.close();
     const migrated = openGraphStore(path);
     expect(migrated.listGraphs()[0]).toMatchObject({ name: "legacy", description: "" });
-    expect(migrated.listNodes()[0]).toMatchObject({ name: "old node", description: "" });
+    expect(migrated.listNodes()[0]).toMatchObject({ name: "old node", description: "", type: null, intent: "", status: null });
     migrated.close();
   });
 });
@@ -285,5 +285,85 @@ describe("proposals", () => {
     const proposal = store.createProposal(fresh.id, { title: "Start", nodes: [{ id: "s", name: "Start" }], edges: [] });
     expect(store.diffProposal(fresh.id, proposal.id, "latest")).toMatchObject({ against: "empty", diff: { nodes: [{ status: "added" }] } });
     expect(store.diffProposal(fresh.id, proposal.id, "draft").diff.graph).toEqual([]);
+  });
+});
+
+describe("design vocabulary", () => {
+  test("nodes and edges keep a type, an intent and a lifecycle status", () => {
+    const api = store.createNode({ name: "API", type: "service", intent: " Serve claims. ", status: "active" });
+    const db = store.createNode({ name: "Claims DB", type: "database" });
+    const edge = store.createEdge({ source: api.id, target: db.id, type: "writes-to", description: "Saves each claim.", status: "planned" });
+    expect(api).toMatchObject({ type: "service", intent: "Serve claims.", status: "active" });
+    expect(db).toMatchObject({ type: "database", intent: "", status: null });
+    expect(edge).toMatchObject({ type: "writes-to", label: "", description: "Saves each claim.", intent: "", status: "planned" });
+
+    expect(store.updateNode(api.id, { name: "Claims API" })).toMatchObject({ type: "service", status: "active" });
+    expect(store.updateNode(api.id, { type: null, status: "deprecated" })).toMatchObject({ type: null, status: "deprecated" });
+    expect(store.updateEdge(edge.id, { type: "reads-from" })).toMatchObject({ type: "reads-from", description: "Saves each claim." });
+  });
+
+  test("rejects a type or a status that is not in the vocabulary", () => {
+    const a = store.createNode({ name: "A" });
+    expect(() => store.createNode({ name: "B", type: "server" })).toThrow("The node type server is not in the vocabulary.");
+    expect(() => store.updateNode(a.id, { status: "done" })).toThrow("The status done is not in the vocabulary.");
+    expect(() => store.createEdge({ source: a.id, target: a.id, type: "service" })).toThrow("The relationship type service is not in the vocabulary.");
+  });
+
+  test("uses the vocabulary it is given", () => {
+    const custom = openGraphStore(":memory:", {
+      nodeTypes: [{ id: "queue", name: "Queue", description: "" }],
+      relationshipTypes: [],
+      statuses: [],
+    });
+    expect(custom.createNode({ name: "Jobs", type: "queue" }).type).toBe("queue");
+    expect(() => custom.createNode({ name: "API", type: "service" })).toThrow(StoreError);
+    custom.close();
+  });
+
+  test("a proposal can set and clear design fields, and its diff lists them", () => {
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const a = store.createNodeInGraph(one.id, { name: "A", type: "service", status: "active" }, { x: 0, y: 0 });
+    store.publish(one.id);
+    expect(() => store.createProposal(one.id, { title: "Bad", nodes: [{ id: a.id, type: "server" }], edges: [] })).toThrow(
+      `${a.id}: The node type server is not in the vocabulary.`,
+    );
+
+    const proposal = store.createProposal(one.id, {
+      title: "Split the queue out",
+      nodes: [
+        { id: a.id, status: null, intent: "Accept claims." },
+        { id: "queue", name: "Claims queue", type: "external-system", status: "proposed" },
+      ],
+      edges: [{ id: "a-queue", source: a.id, target: "queue", type: "publishes-event", intent: "Decouple intake." }],
+    });
+    expect(proposal.content.nodes[0]).toMatchObject({ type: "service", status: null, intent: "Accept claims." });
+    const { diff } = store.diffProposal(one.id, proposal.id, "latest");
+    expect(diff.nodes[0]?.fields).toEqual([
+      { field: "status", before: "active", after: null },
+      { field: "intent", before: "", after: "Accept claims." },
+    ]);
+    expect(diff.edges[0]).toMatchObject({ status: "added", after: { type: "publishes-event", intent: "Decouple intake." } });
+
+    store.applyProposal(one.id, proposal.id, false);
+    const after = store.view(one.id);
+    expect(after.nodes.map(({ type, status }) => [type, status])).toEqual([
+      ["service", null],
+      ["external-system", "proposed"],
+    ]);
+    expect(after.edges[0]).toMatchObject({ type: "publishes-event", intent: "Decouple intake." });
+  });
+
+  test("the content hash does not change for a graph that uses no design fields", () => {
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const a = store.createNodeInGraph(one.id, { name: "A" }, null);
+    store.createEdgeInGraph(one.id, { source: a.id, target: a.id, label: "loop" });
+    const view = store.view(one.id);
+    const legacy = {
+      ...view,
+      nodes: view.nodes.map(({ type, intent, status, ...node }) => node),
+      edges: view.edges.map(({ type, description, intent, status, ...edge }) => edge),
+    } as unknown as typeof view;
+    expect(contentHash(legacy)).toBe(contentHash(view));
+    expect(contentHash({ ...view, nodes: view.nodes.map((node) => ({ ...node, status: "active" })) })).not.toBe(contentHash(view));
   });
 });

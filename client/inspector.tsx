@@ -1,14 +1,21 @@
 import { normalizeLabels, type GraphEdge, type GraphInput, type GraphNode, type GraphVersionSummary, type GraphView, type ProposalSummary } from "../model.ts";
-import { PropertiesField, TextAreaField, TextField } from "./fields.tsx";
+import { PropertiesField, SelectField, TextAreaField, TextField } from "./fields.tsx";
+import { useVocabulary } from "./vocabulary.ts";
+
+type NodePatch = Partial<Pick<GraphNode, "name" | "description" | "type" | "intent" | "status" | "labels" | "properties">>;
+
+type EdgePatch = Partial<
+  Pick<GraphEdge, "type" | "label" | "description" | "intent" | "status" | "directed" | "source" | "target" | "properties">
+>;
 
 export type InspectorActions = {
   updateGraph: (patch: Partial<GraphInput>) => void;
   deleteGraph: () => void;
   publish: () => void;
-  updateNode: (id: string, patch: Partial<Pick<GraphNode, "name" | "description" | "labels" | "properties">>) => void;
+  updateNode: (id: string, patch: NodePatch) => void;
   removeNodeFromGraph: (id: string) => void;
   deleteNode: (id: string) => void;
-  updateEdge: (id: string, patch: Partial<Pick<GraphEdge, "label" | "directed" | "source" | "target" | "properties">>) => void;
+  updateEdge: (id: string, patch: EdgePatch) => void;
   removeEdgeFromGraph: (id: string) => void;
   deleteEdge: (id: string) => void;
   reviewProposal: (id: string) => void;
@@ -17,16 +24,37 @@ export type InspectorActions = {
 const nameOf = (view: GraphView, id: string) => view.nodes.find((node) => node.id === id)?.name ?? id;
 
 const NodeInspector = ({ node, view, actions }: { node: GraphNode; view: GraphView; actions: InspectorActions }) => {
+  const vocabulary = useVocabulary();
   const degree = view.edges.filter((edge) => edge.source === node.id || edge.target === node.id).length;
   return (
     <section className="section">
       <h2>Node</h2>
       <TextField label="Name" value={node.name} onCommit={(name) => actions.updateNode(node.id, { name })} />
+      <SelectField
+        label="Type"
+        empty="No type"
+        value={node.type}
+        options={vocabulary.nodeTypes}
+        onCommit={(type) => actions.updateNode(node.id, { type })}
+      />
+      <SelectField
+        label="Status"
+        empty="No status"
+        value={node.status}
+        options={vocabulary.statuses}
+        onCommit={(status) => actions.updateNode(node.id, { status })}
+      />
       <TextAreaField
         label="Description"
         placeholder="Optional"
         value={node.description}
         onCommit={(description) => actions.updateNode(node.id, { description })}
+      />
+      <TextAreaField
+        label="Intent"
+        placeholder="Why does this exist?"
+        value={node.intent}
+        onCommit={(intent) => actions.updateNode(node.id, { intent })}
       />
       <TextField
         label="Labels"
@@ -55,40 +83,74 @@ const NodeInspector = ({ node, view, actions }: { node: GraphNode; view: GraphVi
   );
 };
 
-const EdgeInspector = ({ edge, view, actions }: { edge: GraphEdge; view: GraphView; actions: InspectorActions }) => (
-  <section className="section">
-    <h2>Edge</h2>
-    <p className="endpoints">
-      {nameOf(view, edge.source)} {edge.directed ? "→" : "—"} {nameOf(view, edge.target)}
-    </p>
-    <TextField label="Label" placeholder="calls, owns, knows" value={edge.label} onCommit={(label) => actions.updateEdge(edge.id, { label })} />
-    <label className="check">
-      <input type="checkbox" checked={edge.directed} onChange={(e) => actions.updateEdge(edge.id, { directed: e.target.checked })} />
-      Directed
-    </label>
-    {edge.directed && edge.source !== edge.target && (
-      <button type="button" onClick={() => actions.updateEdge(edge.id, { source: edge.target, target: edge.source })}>
-        Reverse direction
-      </button>
-    )}
-    <PropertiesField properties={edge.properties} onCommit={(properties) => actions.updateEdge(edge.id, { properties })} />
-    <div className="row">
-      <button type="button" onClick={() => actions.removeEdgeFromGraph(edge.id)}>
-        Remove from graph
-      </button>
-      <button
-        type="button"
-        className="danger"
-        onClick={() => {
-          if (confirm("Delete this edge from every graph?")) actions.deleteEdge(edge.id);
-        }}
-      >
-        Delete everywhere
-      </button>
-    </div>
-    <p className="mono">{edge.id}</p>
-  </section>
-);
+const EdgeInspector = ({ edge, view, actions }: { edge: GraphEdge; view: GraphView; actions: InspectorActions }) => {
+  const vocabulary = useVocabulary();
+  return (
+    <section className="section">
+      <h2>Edge</h2>
+      <p className="endpoints">
+        {nameOf(view, edge.source)} {edge.directed ? "→" : "—"} {nameOf(view, edge.target)}
+      </p>
+      <SelectField
+        label="Relationship"
+        empty="No relationship type"
+        value={edge.type}
+        options={vocabulary.relationshipTypes}
+        onCommit={(type) => actions.updateEdge(edge.id, { type })}
+      />
+      <SelectField
+        label="Status"
+        empty="No status"
+        value={edge.status}
+        options={vocabulary.statuses}
+        onCommit={(status) => actions.updateEdge(edge.id, { status })}
+      />
+      <TextField
+        label="Label"
+        placeholder="Optional. Shown instead of the relationship type."
+        value={edge.label}
+        onCommit={(label) => actions.updateEdge(edge.id, { label })}
+      />
+      <TextAreaField
+        label="Description"
+        placeholder="Optional"
+        value={edge.description}
+        onCommit={(description) => actions.updateEdge(edge.id, { description })}
+      />
+      <TextAreaField
+        label="Intent"
+        placeholder="Why does this connection exist?"
+        value={edge.intent}
+        onCommit={(intent) => actions.updateEdge(edge.id, { intent })}
+      />
+      <label className="check">
+        <input type="checkbox" checked={edge.directed} onChange={(e) => actions.updateEdge(edge.id, { directed: e.target.checked })} />
+        Directed
+      </label>
+      {edge.directed && edge.source !== edge.target && (
+        <button type="button" onClick={() => actions.updateEdge(edge.id, { source: edge.target, target: edge.source })}>
+          Reverse direction
+        </button>
+      )}
+      <PropertiesField properties={edge.properties} onCommit={(properties) => actions.updateEdge(edge.id, { properties })} />
+      <div className="row">
+        <button type="button" onClick={() => actions.removeEdgeFromGraph(edge.id)}>
+          Remove from graph
+        </button>
+        <button
+          type="button"
+          className="danger"
+          onClick={() => {
+            if (confirm("Delete this edge from every graph?")) actions.deleteEdge(edge.id);
+          }}
+        >
+          Delete everywhere
+        </button>
+      </div>
+      <p className="mono">{edge.id}</p>
+    </section>
+  );
+};
 
 const Versions = ({ versions, notice, actions }: { versions: GraphVersionSummary[]; notice: string | null; actions: InspectorActions }) => (
   <section className="section">

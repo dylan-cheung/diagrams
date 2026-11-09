@@ -1,11 +1,18 @@
+import { EDGE_DESIGN_DEFAULTS, NODE_DESIGN_DEFAULTS } from "./model.ts";
 import type { ContentEdge, ContentNode, EdgeChange, FieldChange, GraphContent, GraphDiff, NodeChange, Properties } from "./model.ts";
 
 export const EMPTY_CONTENT: GraphContent = { graph: { name: "", description: "" }, nodes: [], edges: [] };
 
 export const toContent = ({ graph, nodes, edges }: GraphContent): GraphContent => ({
   graph: { name: graph.name, description: graph.description },
-  nodes: nodes.map(({ id, name, description, labels, properties, position }) => ({ id, name, description, labels, properties, position })),
-  edges: edges.map(({ id, source, target, directed, label, properties }) => ({ id, source, target, directed, label, properties })),
+  nodes: nodes.map((node) => {
+    const { id, name, description, type, intent, status, labels, properties, position } = { ...NODE_DESIGN_DEFAULTS, ...node };
+    return { id, name, description, type, intent, status, labels, properties, position };
+  }),
+  edges: edges.map((edge) => {
+    const { id, source, target, directed, type, label, description, intent, status, properties } = { ...EDGE_DESIGN_DEFAULTS, ...edge };
+    return { id, source, target, directed, type, label, description, intent, status, properties };
+  }),
 });
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -19,8 +26,8 @@ const compareProperties = (before: Properties, after: Properties): FieldChange[]
     .filter((key) => !same(before[key], after[key]))
     .map((key) => ({ field: `properties.${key}`, before: before[key] ?? null, after: after[key] ?? null }));
 
-const NODE_FIELDS: (keyof ContentNode & string)[] = ["name", "description", "labels"];
-const EDGE_FIELDS: (keyof ContentEdge & string)[] = ["source", "target", "directed", "label"];
+const NODE_FIELDS: (keyof ContentNode & string)[] = ["name", "type", "status", "description", "intent", "labels"];
+const EDGE_FIELDS: (keyof ContentEdge & string)[] = ["source", "target", "directed", "type", "label", "status", "description", "intent"];
 
 const pair = <T extends { id: string }, C>(
   before: T[],

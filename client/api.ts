@@ -25,6 +25,7 @@ const edges = client.api.edges;
 const graphs = client.api.graphs;
 
 export const api = {
+  vocabulary: () => unwrap(client.api.vocabulary.$get()),
   listGraphs: () => unwrap(graphs.$get()),
   createGraph: (input: GraphInput) => unwrap(graphs.$post({ json: input })),
   updateGraph: (id: string, input: Partial<GraphInput>) => unwrap(graphs[":id"].$patch({ param: { id }, json: input })),

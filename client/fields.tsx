@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
-import { formatPropertyValue, parsePropertyValue, type Properties } from "../model.ts";
+import { formatPropertyValue, parsePropertyValue, type Properties, type Term } from "../model.ts";
 
 export const TextField = ({
   label,
@@ -58,6 +58,37 @@ export const TextAreaField = ({
           if (e.key === "Escape") setText(value);
         }}
       />
+    </label>
+  );
+};
+
+export const SelectField = ({
+  label,
+  value,
+  options,
+  empty,
+  onCommit,
+}: {
+  label: string;
+  value: string | null;
+  options: Term[];
+  empty: string;
+  onCommit: (value: string | null) => void;
+}) => {
+  const selected = options.find(({ id }) => id === value);
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select value={value ?? ""} onChange={(e) => onCommit(e.target.value === "" ? null : e.target.value)}>
+        <option value="">{empty}</option>
+        {value != null && selected == null && <option value={value}>{value} (not in the vocabulary)</option>}
+        {options.map(({ id, name }) => (
+          <option key={id} value={id}>
+            {name}
+          </option>
+        ))}
+      </select>
+      {selected != null && selected.description !== "" && <small className="hint">{selected.description}</small>}
     </label>
   );
 };

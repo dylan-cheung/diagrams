@@ -39,7 +39,10 @@ const propertyFields = (properties: ContentNode["properties"]): [string, unknown
   Object.entries(properties).map(([key, value]) => [`properties.${key}`, value]);
 
 const nodeFields = (node: ContentNode): [string, unknown][] => [
+  ["type", node.type],
+  ["status", node.status],
   ["description", node.description],
+  ["intent", node.intent],
   ["labels", node.labels],
   ...propertyFields(node.properties),
 ];
@@ -48,12 +51,18 @@ const edgeFields = (edge: ContentEdge): [string, unknown][] => [
   ["source", edge.source],
   ["target", edge.target],
   ["directed", edge.directed],
+  ["type", edge.type],
   ["label", edge.label],
+  ["status", edge.status],
+  ["description", edge.description],
+  ["intent", edge.intent],
   ...propertyFields(edge.properties),
 ];
 
+const edgeName = (edge: ContentEdge) => (edge.label !== "" ? edge.label : (edge.type ?? ""));
+
 const edgeTitle = (edge: ContentEdge, names: Names) =>
-  `${names.get(edge.source) ?? edge.source} ${edge.directed ? "→" : "—"} ${names.get(edge.target) ?? edge.target}${edge.label === "" ? "" : ` (${edge.label})`}`;
+  `${names.get(edge.source) ?? edge.source} ${edge.directed ? "→" : "—"} ${names.get(edge.target) ?? edge.target}${edgeName(edge) === "" ? "" : ` (${edgeName(edge)})`}`;
 
 const FieldTable = ({ fields, names }: { fields: FieldChange[]; names: Names }) => (
   <table className="field-table">

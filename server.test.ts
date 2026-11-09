@@ -126,6 +126,7 @@ describe("API docs", () => {
       "/api/graphs/{id}/versions/{version}",
       "/api/nodes",
       "/api/nodes/{id}",
+      "/api/vocabulary",
     ]);
     expect(Object.keys(spec.components.schemas)).toEqual(expect.arrayContaining(["Node", "Edge", "Graph", "GraphView", "Error"]));
   });

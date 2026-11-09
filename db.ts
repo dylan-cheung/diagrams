@@ -4,6 +4,8 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { EMPTY_CONTENT, diffGraphs, toContent } from "./diff.ts";
 import {
+  EDGE_DESIGN_DEFAULTS,
+  NODE_DESIGN_DEFAULTS,
   normalizeLabels,
   type ContentEdge,
   type ContentNode,
@@ -23,16 +25,33 @@ import {
   type Proposal,
   type ProposalInput,
   type ProposalSummary,
+  type Vocabulary,
 } from "./model.ts";
+import { DEFAULT_VOCABULARY, edgeDesignErrors, nodeDesignErrors } from "./vocabulary.ts";
 
-type NodeRow = { id: string; name: string; description: string; labels: string; properties: string; created_at: string; updated_at: string };
+type NodeRow = {
+  id: string;
+  name: string;
+  description: string;
+  type: string | null;
+  intent: string;
+  status: string | null;
+  labels: string;
+  properties: string;
+  created_at: string;
+  updated_at: string;
+};
 
 type EdgeRow = {
   id: string;
   source: string;
   target: string;
   directed: number;
+  type: string | null;
   label: string;
+  description: string;
+  intent: string;
+  status: string | null;
   properties: string;
   created_at: string;
   updated_at: string;
@@ -70,6 +89,9 @@ const toNode = (row: NodeRow): GraphNode => ({
   id: row.id,
   name: row.name,
   description: row.description,
+  type: row.type,
+  intent: row.intent,
+  status: row.status,
   labels: JSON.parse(row.labels) as string[],
   properties: JSON.parse(row.properties) as Properties,
   createdAt: row.created_at,
@@ -81,7 +103,11 @@ const toEdge = (row: EdgeRow): GraphEdge => ({
   source: row.source,
   target: row.target,
   directed: row.directed === 1,
+  type: row.type,
   label: row.label,
+  description: row.description,
+  intent: row.intent,
+  status: row.status,
   properties: JSON.parse(row.properties) as Properties,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -114,11 +140,22 @@ const toProposalSummary = (row: ProposalRow): ProposalSummary => ({
   updatedAt: row.updated_at,
 });
 
-const sameNode = (a: Pick<ContentNode, "name" | "description" | "labels" | "properties">, b: typeof a) =>
-  JSON.stringify([a.name, a.description, a.labels, a.properties]) === JSON.stringify([b.name, b.description, b.labels, b.properties]);
+type NodeFields = Omit<ContentNode, "id" | "position">;
 
-const sameEdge = (a: Omit<ContentEdge, "id">, b: typeof a) =>
-  JSON.stringify([a.source, a.target, a.directed, a.label, a.properties]) === JSON.stringify([b.source, b.target, b.directed, b.label, b.properties]);
+type EdgeFields = Omit<ContentEdge, "id">;
+
+const nodeFields = (n: NodeFields) => [n.name, n.description, n.type, n.intent, n.status, n.labels, n.properties];
+
+const edgeFields = (e: EdgeFields) => [e.source, e.target, e.directed, e.type, e.label, e.description, e.intent, e.status, e.properties];
+
+const sameNode = (a: NodeFields, b: NodeFields) => JSON.stringify(nodeFields(a)) === JSON.stringify(nodeFields(b));
+
+const sameEdge = (a: EdgeFields, b: EdgeFields) => JSON.stringify(edgeFields(a)) === JSON.stringify(edgeFields(b));
+
+const designOf = (defaults: Record<string, unknown>, item: Record<string, unknown>) =>
+  Object.entries(defaults).every(([key, value]) => (item[key] ?? value) === value)
+    ? []
+    : [Object.fromEntries(Object.entries(defaults).map(([key, value]) => [key, item[key] ?? value]))];
 
 const sortKeys = (properties: Properties) => Object.fromEntries(Object.entries(properties).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 
@@ -130,8 +167,8 @@ export const contentHash = ({ graph, nodes, edges }: GraphView) =>
       JSON.stringify({
         name: graph.name,
         description: graph.description,
-        nodes: byId(nodes).map((n) => [n.id, n.name, n.description, n.labels, sortKeys(n.properties)]),
-        edges: byId(edges).map((e) => [e.id, e.source, e.target, e.directed, e.label, sortKeys(e.properties)]),
+        nodes: byId(nodes).map((n) => [n.id, n.name, n.description, n.labels, sortKeys(n.properties), ...designOf(NODE_DESIGN_DEFAULTS, n)]),
+        edges: byId(edges).map((e) => [e.id, e.source, e.target, e.directed, e.label, sortKeys(e.properties), ...designOf(EDGE_DESIGN_DEFAULTS, e)]),
       }),
     )
     .digest("hex");
@@ -141,6 +178,9 @@ CREATE TABLE IF NOT EXISTS nodes (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
+  type TEXT,
+  intent TEXT NOT NULL DEFAULT '',
+  status TEXT,
   labels TEXT NOT NULL DEFAULT '[]',
   properties TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
@@ -151,7 +191,11 @@ CREATE TABLE IF NOT EXISTS edges (
   source TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   target TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   directed INTEGER NOT NULL DEFAULT 1,
+  type TEXT,
   label TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  intent TEXT NOT NULL DEFAULT '',
+  status TEXT,
   properties TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -200,15 +244,27 @@ CREATE TABLE IF NOT EXISTS proposals (
 CREATE INDEX IF NOT EXISTS proposals_graph ON proposals(graph_id);
 `;
 
-export const openGraphStore = (path: string) => {
+const ADDED_COLUMNS: [string, string, string][] = [
+  ["nodes", "description", "TEXT NOT NULL DEFAULT ''"],
+  ["graphs", "description", "TEXT NOT NULL DEFAULT ''"],
+  ["nodes", "type", "TEXT"],
+  ["nodes", "intent", "TEXT NOT NULL DEFAULT ''"],
+  ["nodes", "status", "TEXT"],
+  ["edges", "type", "TEXT"],
+  ["edges", "description", "TEXT NOT NULL DEFAULT ''"],
+  ["edges", "intent", "TEXT NOT NULL DEFAULT ''"],
+  ["edges", "status", "TEXT"],
+];
+
+export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VOCABULARY) => {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true, strict: true });
   db.run("PRAGMA journal_mode = WAL");
   db.run("PRAGMA foreign_keys = ON");
   db.exec(SCHEMA);
-  for (const table of ["nodes", "graphs"]) {
+  for (const [table, column, definition] of ADDED_COLUMNS) {
     const columns = db.query<{ name: string }, []>(`PRAGMA table_info(${table})`).all();
-    if (!columns.some(({ name }) => name === "description")) db.run(`ALTER TABLE ${table} ADD COLUMN description TEXT NOT NULL DEFAULT ''`);
+    if (!columns.some(({ name }) => name === column)) db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 
   const now = () => new Date().toISOString();
@@ -249,18 +305,27 @@ export const openGraphStore = (path: string) => {
     }
   };
 
+  const checkDesign = (errors: string[]) => {
+    if (errors.length > 0) throw new StoreError(errors.join(" "), 400);
+  };
+
   const touchGraph = (graphId: string) =>
     db.query("UPDATE graphs SET updated_at = $now WHERE id = $graphId").run({ graphId, now: now() });
 
   const createNode = (input: NodeInput) => {
+    checkDesign(nodeDesignErrors(vocabulary, input));
     const id = crypto.randomUUID();
     const stamp = now();
     db.query(
-      "INSERT INTO nodes (id, name, description, labels, properties, created_at, updated_at) VALUES ($id, $name, $description, $labels, $properties, $stamp, $stamp)",
+      `INSERT INTO nodes (id, name, description, type, intent, status, labels, properties, created_at, updated_at)
+       VALUES ($id, $name, $description, $type, $intent, $status, $labels, $properties, $stamp, $stamp)`,
     ).run({
       id,
       name: input.name.trim(),
       description: input.description?.trim() ?? "",
+      type: input.type ?? null,
+      intent: input.intent?.trim() ?? "",
+      status: input.status ?? null,
       labels: JSON.stringify(normalizeLabels(input.labels ?? [])),
       properties: JSON.stringify(input.properties ?? {}),
       stamp,
@@ -270,12 +335,17 @@ export const openGraphStore = (path: string) => {
 
   const updateNode = (id: string, input: Partial<NodeInput>) => {
     const node = requireNode(id);
+    checkDesign(nodeDesignErrors(vocabulary, input));
     db.query(
-      "UPDATE nodes SET name = $name, description = $description, labels = $labels, properties = $properties, updated_at = $now WHERE id = $id",
+      `UPDATE nodes SET name = $name, description = $description, type = $type, intent = $intent, status = $status,
+       labels = $labels, properties = $properties, updated_at = $now WHERE id = $id`,
     ).run({
       id,
       name: input.name?.trim() ?? node.name,
       description: input.description?.trim() ?? node.description,
+      type: input.type !== undefined ? input.type : node.type,
+      intent: input.intent?.trim() ?? node.intent,
+      status: input.status !== undefined ? input.status : node.status,
       labels: JSON.stringify(normalizeLabels(input.labels ?? node.labels)),
       properties: JSON.stringify(input.properties ?? node.properties),
       now: now(),
@@ -286,16 +356,22 @@ export const openGraphStore = (path: string) => {
   const createEdge = (input: EdgeInput) => {
     requireNode(input.source);
     requireNode(input.target);
+    checkDesign(edgeDesignErrors(vocabulary, input));
     const id = crypto.randomUUID();
     const stamp = now();
     db.query(
-      "INSERT INTO edges (id, source, target, directed, label, properties, created_at, updated_at) VALUES ($id, $source, $target, $directed, $label, $properties, $stamp, $stamp)",
+      `INSERT INTO edges (id, source, target, directed, type, label, description, intent, status, properties, created_at, updated_at)
+       VALUES ($id, $source, $target, $directed, $type, $label, $description, $intent, $status, $properties, $stamp, $stamp)`,
     ).run({
       id,
       source: input.source,
       target: input.target,
       directed: input.directed ?? true ? 1 : 0,
+      type: input.type ?? null,
       label: input.label?.trim() ?? "",
+      description: input.description?.trim() ?? "",
+      intent: input.intent?.trim() ?? "",
+      status: input.status ?? null,
       properties: JSON.stringify(input.properties ?? {}),
       stamp,
     });
@@ -306,14 +382,20 @@ export const openGraphStore = (path: string) => {
     const edge = requireEdge(id);
     if (input.source !== undefined) requireNode(input.source);
     if (input.target !== undefined) requireNode(input.target);
+    checkDesign(edgeDesignErrors(vocabulary, input));
     db.query(
-      "UPDATE edges SET source = $source, target = $target, directed = $directed, label = $label, properties = $properties, updated_at = $now WHERE id = $id",
+      `UPDATE edges SET source = $source, target = $target, directed = $directed, type = $type, label = $label, description = $description,
+       intent = $intent, status = $status, properties = $properties, updated_at = $now WHERE id = $id`,
     ).run({
       id,
       source: input.source ?? edge.source,
       target: input.target ?? edge.target,
       directed: input.directed ?? edge.directed ? 1 : 0,
+      type: input.type !== undefined ? input.type : edge.type,
       label: input.label?.trim() ?? edge.label,
+      description: input.description?.trim() ?? edge.description,
+      intent: input.intent?.trim() ?? edge.intent,
+      status: input.status !== undefined ? input.status : edge.status,
       properties: JSON.stringify(input.properties ?? edge.properties),
       now: now(),
     });
@@ -388,10 +470,17 @@ export const openGraphStore = (path: string) => {
     "SELECT * FROM graph_versions WHERE graph_id = $graphId AND version = $version",
   );
 
-  const toVersion = (row: VersionRow & { snapshot: string }): GraphVersion => ({
-    ...toVersionSummary(row),
-    view: JSON.parse(row.snapshot) as GraphView,
-  });
+  const toVersion = (row: VersionRow & { snapshot: string }): GraphVersion => {
+    const snapshot = JSON.parse(row.snapshot) as GraphView;
+    return {
+      ...toVersionSummary(row),
+      view: {
+        ...snapshot,
+        nodes: snapshot.nodes.map((node) => ({ ...NODE_DESIGN_DEFAULTS, ...node })),
+        edges: snapshot.edges.map((edge) => ({ ...EDGE_DESIGN_DEFAULTS, ...edge })),
+      },
+    };
+  };
 
   const publish = db.transaction((graphId: string): GraphVersion => {
     const snapshot = view(graphId);
@@ -432,7 +521,7 @@ export const openGraphStore = (path: string) => {
   };
 
   const toProposal = (row: ProposalRow): Proposal => {
-    const content = JSON.parse(row.content) as GraphContent;
+    const content = toContent(JSON.parse(row.content) as GraphContent);
     const sharedWith = Object.fromEntries(
       content.nodes
         .map(({ id }) => [id, otherGraphs.all({ nodeId: id, graphId: row.graph_id }).map(({ name }) => name)] as const)
@@ -454,10 +543,14 @@ export const openGraphStore = (path: string) => {
       const existing = row == null ? null : toNode(row);
       const name = proposed.name ?? existing?.name;
       if (name == null) throw new StoreError(`The new node ${proposed.id} needs a name.`, 400);
+      checkDesign(nodeDesignErrors(vocabulary, proposed).map((error) => `${proposed.id}: ${error}`));
       return {
         id: proposed.id,
         name,
         description: proposed.description?.trim() ?? existing?.description ?? "",
+        type: proposed.type !== undefined ? proposed.type : (existing?.type ?? null),
+        intent: proposed.intent?.trim() ?? existing?.intent ?? "",
+        status: proposed.status !== undefined ? proposed.status : (existing?.status ?? null),
         labels: normalizeLabels(proposed.labels ?? existing?.labels ?? []),
         properties: proposed.properties ?? existing?.properties ?? {},
         position: proposed.position !== undefined ? proposed.position : (positions.get(proposed.id) ?? null),
@@ -475,12 +568,17 @@ export const openGraphStore = (path: string) => {
       if (!nodeIds.has(source) || !nodeIds.has(target)) {
         throw new StoreError(`The edge ${proposed.id} connects a node that is not in the proposal.`, 400);
       }
+      checkDesign(edgeDesignErrors(vocabulary, proposed).map((error) => `${proposed.id}: ${error}`));
       return {
         id: proposed.id,
         source,
         target,
         directed: proposed.directed ?? existing?.directed ?? true,
+        type: proposed.type !== undefined ? proposed.type : (existing?.type ?? null),
         label: proposed.label?.trim() ?? existing?.label ?? "",
+        description: proposed.description?.trim() ?? existing?.description ?? "",
+        intent: proposed.intent?.trim() ?? existing?.intent ?? "",
+        status: proposed.status !== undefined ? proposed.status : (existing?.status ?? null),
         properties: proposed.properties ?? existing?.properties ?? {},
       };
     });
@@ -586,6 +684,8 @@ export const openGraphStore = (path: string) => {
   };
 
   return {
+    vocabulary: () => vocabulary,
+
     listNodes: () => db.query<NodeRow, []>("SELECT * FROM nodes ORDER BY name COLLATE NOCASE").all().map(toNode),
     getNode: requireNode,
     createNode,

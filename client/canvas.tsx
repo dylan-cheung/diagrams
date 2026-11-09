@@ -19,33 +19,51 @@ import {
 import { useEffect, useMemo } from "react";
 import { assignParallelSlots, edgePath, loopPath, type Box, type ParallelSlot } from "../geometry.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
-import type { ChangeStatus, GraphContent, Position } from "../model.ts";
+import type { ChangeStatus, GraphContent, Position, Vocabulary } from "../model.ts";
+import { termName } from "../vocabulary.ts";
+import { useVocabulary } from "./vocabulary.ts";
 
 export type Selection = { kind: "node" | "edge"; id: string } | null;
 
 export type Marks = { nodes: Map<string, ChangeStatus>; edges: Map<string, ChangeStatus> };
 
-type EntityNode = Node<{ name: string; labels: string[]; mark: ChangeStatus | undefined }, "entity">;
-type FloatingEdge = Edge<{ slot: ParallelSlot; flip: boolean; mark: ChangeStatus | undefined }, "floating">;
+type Design = { type: string | null; status: string | null };
+type EntityNode = Node<Design & { name: string; labels: string[]; mark: ChangeStatus | undefined }, "entity">;
+type FloatingEdge = Edge<Design & { slot: ParallelSlot; flip: boolean; mark: ChangeStatus | undefined }, "floating">;
 
 const markClass = (mark: ChangeStatus | undefined) => (mark == null ? "" : ` mark-${mark}`);
 
-const EntityNodeView = ({ data, selected }: NodeProps<EntityNode>) => (
-  <div className={`entity${selected ? " selected" : ""}${markClass(data.mark)}`} style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}>
-    <Handle id="in" type="target" position={HandlePosition.Left} className="target-handle" />
-    <div className="entity-name">{data.name}</div>
-    {data.labels.length > 0 && (
-      <div className="entity-labels">
-        {data.labels.map((label) => (
-          <span key={label} className="chip">
-            {label}
-          </span>
-        ))}
-      </div>
-    )}
-    <Handle id="out" type="source" position={HandlePosition.Right} className="source-handle" />
-  </div>
-);
+const designClass = ({ type, status }: Design) => `${type == null ? "" : ` type-${type}`}${status == null ? "" : ` status-${status}`}`;
+
+const EntityNodeView = ({ data, selected }: NodeProps<EntityNode>) => {
+  const vocabulary = useVocabulary();
+  const status = termName(vocabulary.statuses, data.status);
+  return (
+    <div
+      className={`entity${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}`}
+      style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
+    >
+      <Handle id="in" type="target" position={HandlePosition.Left} className="target-handle" />
+      {(data.type != null || status != null) && (
+        <div className="entity-design">
+          <span className="entity-type">{termName(vocabulary.nodeTypes, data.type)}</span>
+          {status != null && <span className="entity-status">{status}</span>}
+        </div>
+      )}
+      <div className="entity-name">{data.name}</div>
+      {data.labels.length > 0 && (
+        <div className="entity-labels">
+          {data.labels.map((label) => (
+            <span key={label} className="chip">
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
+      <Handle id="out" type="source" position={HandlePosition.Right} className="source-handle" />
+    </div>
+  );
+};
 
 const useBox = (id: string): Box | null => {
   const node = useInternalNode(id);
@@ -65,11 +83,16 @@ const FloatingEdgeView = ({ id, source, target, data, label, markerEnd, selected
   const geometry = source === target ? loopPath(sourceBox, data.slot) : edgePath(sourceBox, targetBox, data.slot, data.flip);
   return (
     <>
-      <BaseEdge id={id} path={geometry.path} markerEnd={markerEnd} className={`${selected ? "edge-selected" : ""}${markClass(data.mark)}`} />
+      <BaseEdge
+        id={id}
+        path={geometry.path}
+        markerEnd={markerEnd}
+        className={`${selected ? "edge-selected" : ""}${markClass(data.mark)}${designClass(data)}`}
+      />
       {label != null && label !== "" && (
         <EdgeLabelRenderer>
           <div
-            className={`edge-label${selected ? " selected" : ""}${markClass(data.mark)}`}
+            className={`edge-label${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}`}
             style={{ transform: `translate(-50%, -50%) translate(${geometry.label.x}px, ${geometry.label.y}px)` }}
           >
             {label}
@@ -88,11 +111,11 @@ const toFlowNodes = (view: GraphContent, selection: Selection, marks: Marks | un
     id: node.id,
     type: "entity",
     position: node.position ?? { x: 0, y: 0 },
-    data: { name: node.name, labels: node.labels, mark: marks?.nodes.get(node.id) },
+    data: { name: node.name, type: node.type, status: node.status, labels: node.labels, mark: marks?.nodes.get(node.id) },
     selected: selection?.kind === "node" && selection.id === node.id,
   }));
 
-const toFlowEdges = (view: GraphContent, selection: Selection, marks: Marks | undefined): FloatingEdge[] => {
+const toFlowEdges = (view: GraphContent, vocabulary: Vocabulary, selection: Selection, marks: Marks | undefined): FloatingEdge[] => {
   const slots = assignParallelSlots(view.edges);
   return view.edges.map((edge) => ({
     id: edge.id,
@@ -101,9 +124,15 @@ const toFlowEdges = (view: GraphContent, selection: Selection, marks: Marks | un
     target: edge.target,
     sourceHandle: "out",
     targetHandle: "in",
-    label: edge.label,
+    label: edge.label !== "" ? edge.label : (termName(vocabulary.relationshipTypes, edge.type) ?? ""),
     markerEnd: edge.directed ? { type: MarkerType.ArrowClosed, width: 18, height: 18 } : undefined,
-    data: { slot: slots.get(edge.id) ?? { index: 0, count: 1 }, flip: edge.source > edge.target, mark: marks?.edges.get(edge.id) },
+    data: {
+      slot: slots.get(edge.id) ?? { index: 0, count: 1 },
+      flip: edge.source > edge.target,
+      type: edge.type,
+      status: edge.status,
+      mark: marks?.edges.get(edge.id),
+    },
     selected: selection?.kind === "edge" && selection.id === edge.id,
   }));
 };
@@ -129,7 +158,8 @@ export const GraphCanvas = ({
 }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityNode>(toFlowNodes(view, selection, marks));
   useEffect(() => setNodes(toFlowNodes(view, selection, marks)), [view, selection, marks, setNodes]);
-  const edges = useMemo(() => toFlowEdges(view, selection, marks), [view, selection, marks]);
+  const vocabulary = useVocabulary();
+  const edges = useMemo(() => toFlowEdges(view, vocabulary, selection, marks), [view, vocabulary, selection, marks]);
 
   return (
     <ReactFlow

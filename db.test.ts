@@ -4,6 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { StoreError, contentHash, openGraphStore, type GraphStore } from "./db.ts";
+import type { EdgeInput, NodeInput } from "./model.ts";
 
 let store: GraphStore;
 
@@ -12,13 +13,20 @@ beforeEach(() => {
 });
 
 describe("nodes and edges", () => {
+  let home: string;
+  beforeEach(() => {
+    home = store.createGraph({ name: "home", description: "Test graph." }).id;
+  });
+  const addNode = (input: NodeInput) => store.createNodeInGraph(home, input, null);
+  const addEdge = (input: EdgeInput) => store.createEdgeInGraph(home, input);
+
   test("allows parallel edges, loops, and both directions between the same nodes", () => {
-    const a = store.createNode({ name: "A", labels: [" Person ", "Person", ""] });
-    const b = store.createNode({ name: "B" });
-    store.createEdge({ source: a.id, target: b.id, label: "knows" });
-    store.createEdge({ source: a.id, target: b.id, label: "owes" });
-    store.createEdge({ source: b.id, target: a.id });
-    store.createEdge({ source: a.id, target: a.id, directed: false });
+    const a = addNode({ name: "A", labels: [" Person ", "Person", ""] });
+    const b = addNode({ name: "B" });
+    addEdge({ source: a.id, target: b.id, label: "knows" });
+    addEdge({ source: a.id, target: b.id, label: "owes" });
+    addEdge({ source: b.id, target: a.id });
+    addEdge({ source: a.id, target: a.id, directed: false });
     expect(a.labels).toEqual(["Person"]);
     expect(store.listEdges().map(({ label, directed }) => [label, directed])).toEqual([
       ["knows", true],
@@ -29,23 +37,23 @@ describe("nodes and edges", () => {
   });
 
   test("a node has an optional description", () => {
-    const a = store.createNode({ name: "A" });
+    const a = addNode({ name: "A" });
     expect(a.description).toBe("");
     expect(store.updateNode(a.id, { description: " Does A things. " })).toMatchObject({ name: "A", description: "Does A things." });
-    expect(store.createNode({ name: "B", description: "Does B things." }).description).toBe("Does B things.");
+    expect(addNode({ name: "B", description: "Does B things." }).description).toBe("Does B things.");
   });
 
   test("deleting a node deletes its edges everywhere", () => {
-    const a = store.createNode({ name: "A" });
-    const b = store.createNode({ name: "B" });
-    store.createEdge({ source: a.id, target: b.id });
+    const a = addNode({ name: "A" });
+    const b = addNode({ name: "B" });
+    addEdge({ source: a.id, target: b.id });
     store.deleteNode(b.id);
     expect(store.listEdges()).toEqual([]);
   });
 
   test("rejects an edge to a missing node", () => {
-    const a = store.createNode({ name: "A" });
-    expect(() => store.createEdge({ source: a.id, target: "missing" })).toThrow(StoreError);
+    const a = addNode({ name: "A" });
+    expect(() => addEdge({ source: a.id, target: "missing" })).toThrow(StoreError);
   });
 });
 
@@ -100,11 +108,13 @@ describe("graphs", () => {
   test("an edge needs both nodes in the graph", () => {
     const one = store.createGraph({ name: "one", description: "Test graph one." });
     const a = store.createNodeInGraph(one.id, { name: "A" }, null);
-    const outside = store.createNode({ name: "Outside" });
+    const two = store.createGraph({ name: "two", description: "Test graph two." });
+    const outside = store.createNodeInGraph(two.id, { name: "Outside" }, null);
     expect(() => store.createEdgeInGraph(one.id, { source: a.id, target: outside.id })).toThrow(
       "Both nodes of the edge must be in the graph first.",
     );
-    const edge = store.createEdge({ source: a.id, target: outside.id });
+    store.addNodeToGraph(two.id, a.id, null);
+    const edge = store.createEdgeInGraph(two.id, { source: a.id, target: outside.id });
     expect(() => store.addEdgeToGraph(one.id, edge.id)).toThrow(StoreError);
   });
 
@@ -112,10 +122,25 @@ describe("graphs", () => {
     const one = store.createGraph({ name: "one", description: "Test graph one." });
     const a = store.createNodeInGraph(one.id, { name: "A" }, null);
     const b = store.createNodeInGraph(one.id, { name: "B" }, null);
-    const outside = store.createNode({ name: "Outside" });
+    const two = store.createGraph({ name: "two", description: "Test graph two." });
+    const outside = store.createNodeInGraph(two.id, { name: "Outside" }, null);
+    store.addNodeToGraph(two.id, a.id, null);
     const edge = store.createEdgeInGraph(one.id, { source: a.id, target: b.id });
-    store.updateEdge(edge.id, { target: outside.id });
+    store.addNodeToGraph(two.id, b.id, null);
+    expect(() => store.updateEdge(edge.id, { target: outside.id })).not.toThrow();
     expect(store.view(one.id).edges).toEqual([]);
+    expect(store.view(two.id).edges.map(({ id }) => id)).toEqual([edge.id]);
+  });
+
+  test("rejects an edge change that would leave the edge in no graph", () => {
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const two = store.createGraph({ name: "two", description: "Test graph two." });
+    const a = store.createNodeInGraph(one.id, { name: "A" }, null);
+    const b = store.createNodeInGraph(one.id, { name: "B" }, null);
+    const outside = store.createNodeInGraph(two.id, { name: "Outside" }, null);
+    const edge = store.createEdgeInGraph(one.id, { source: a.id, target: b.id });
+    expect(() => store.updateEdge(edge.id, { target: outside.id })).toThrow("The edge would leave every graph.");
+    expect(store.getEdge(edge.id).target).toBe(b.id);
   });
 
   test("deleting a graph deletes the nodes and edges that no other graph holds", () => {
@@ -310,10 +335,17 @@ describe("proposals", () => {
 });
 
 describe("design vocabulary", () => {
+  let home: string;
+  beforeEach(() => {
+    home = store.createGraph({ name: "home", description: "Test graph." }).id;
+  });
+  const addNode = (input: NodeInput) => store.createNodeInGraph(home, input, null);
+  const addEdge = (input: EdgeInput) => store.createEdgeInGraph(home, input);
+
   test("nodes and edges keep a type, an intent and a lifecycle status", () => {
-    const api = store.createNode({ name: "API", type: "service", intent: " Serve claims. ", status: "active" });
-    const db = store.createNode({ name: "Claims DB", type: "database" });
-    const edge = store.createEdge({ source: api.id, target: db.id, type: "writes-to", description: "Saves each claim.", status: "planned" });
+    const api = addNode({ name: "API", type: "service", intent: " Serve claims. ", status: "active" });
+    const db = addNode({ name: "Claims DB", type: "database" });
+    const edge = addEdge({ source: api.id, target: db.id, type: "writes-to", description: "Saves each claim.", status: "planned" });
     expect(api).toMatchObject({ type: "service", intent: "Serve claims.", status: "active" });
     expect(db).toMatchObject({ type: "database", intent: "", status: null });
     expect(edge).toMatchObject({ type: "writes-to", label: "", description: "Saves each claim.", intent: "", status: "planned" });
@@ -324,10 +356,10 @@ describe("design vocabulary", () => {
   });
 
   test("rejects a type or a status that is not in the vocabulary", () => {
-    const a = store.createNode({ name: "A" });
-    expect(() => store.createNode({ name: "B", type: "server" })).toThrow("The node type server is not in the vocabulary.");
+    const a = addNode({ name: "A" });
+    expect(() => addNode({ name: "B", type: "server" })).toThrow("The node type server is not in the vocabulary.");
     expect(() => store.updateNode(a.id, { status: "done" })).toThrow("The status done is not in the vocabulary.");
-    expect(() => store.createEdge({ source: a.id, target: a.id, type: "service" })).toThrow("The relationship type service is not in the vocabulary.");
+    expect(() => addEdge({ source: a.id, target: a.id, type: "service" })).toThrow("The relationship type service is not in the vocabulary.");
   });
 
   test("uses the vocabulary it is given", () => {
@@ -336,8 +368,9 @@ describe("design vocabulary", () => {
       relationshipTypes: [],
       statuses: [],
     });
-    expect(custom.createNode({ name: "Jobs", type: "queue" }).type).toBe("queue");
-    expect(() => custom.createNode({ name: "API", type: "service" })).toThrow(StoreError);
+    const graph = custom.createGraph({ name: "custom", description: "Test graph." });
+    expect(custom.createNodeInGraph(graph.id, { name: "Jobs", type: "queue" }, null).type).toBe("queue");
+    expect(() => custom.createNodeInGraph(graph.id, { name: "API", type: "service" }, null)).toThrow(StoreError);
     custom.close();
   });
 

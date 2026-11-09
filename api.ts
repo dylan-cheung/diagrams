@@ -108,10 +108,6 @@ export const createApi = (store: GraphStore) => {
       (c) => c.json(store.listNodes(), 200),
     )
     .openapi(
-      route({ method: "post", path: "/api/nodes", tags: tag.nodes, summary: "Create a node", request: body(NodeInput), responses: { 200: json(Node, "The new node.") } }),
-      (c) => c.json(store.createNode(c.req.valid("json")), 200),
-    )
-    .openapi(
       route({ method: "get", path: "/api/nodes/{id}", tags: tag.nodes, summary: "Get a node", request: { params: IdParams }, responses: { 200: json(Node, "The node.") } }),
       (c) => c.json(store.getNode(c.req.valid("param").id), 200),
     )
@@ -146,18 +142,6 @@ export const createApi = (store: GraphStore) => {
       (c) => c.json(store.listEdges(), 200),
     )
     .openapi(
-      route({
-        method: "post",
-        path: "/api/edges",
-        tags: tag.edges,
-        summary: "Create an edge",
-        description: "Loops (source = target) and parallel edges are allowed. directed defaults to true.",
-        request: body(EdgeInput),
-        responses: { 200: json(Edge, "The new edge.") },
-      }),
-      (c) => c.json(store.createEdge(c.req.valid("json")), 200),
-    )
-    .openapi(
       route({ method: "get", path: "/api/edges/{id}", tags: tag.edges, summary: "Get an edge", request: { params: IdParams }, responses: { 200: json(Edge, "The edge.") } }),
       (c) => c.json(store.getEdge(c.req.valid("param").id), 200),
     )
@@ -167,7 +151,7 @@ export const createApi = (store: GraphStore) => {
         path: "/api/edges/{id}",
         tags: tag.edges,
         summary: "Update an edge",
-        description: "When a new endpoint is not in a graph, the edge leaves that graph.",
+        description: "When a new endpoint is not in a graph, the edge leaves that graph. The change fails when the edge would leave every graph.",
         request: { params: IdParams, ...body(EdgePatch) },
         responses: { 200: json(Edge, "The updated edge.") },
       }),
@@ -240,6 +224,7 @@ export const createApi = (store: GraphStore) => {
         path: "/api/graphs/{id}/nodes",
         tags: tag.membership,
         summary: "Create a node in a graph",
+        description: "Every node belongs to a graph. This is the only way to create one.",
         request: { params: IdParams, ...body(NodeInGraphInput) },
         responses: { 200: json(Node, "The new node.") },
       }),
@@ -299,7 +284,7 @@ export const createApi = (store: GraphStore) => {
         path: "/api/graphs/{id}/edges",
         tags: tag.membership,
         summary: "Create an edge in a graph",
-        description: "Both nodes must already be in the graph.",
+        description: "Every edge belongs to a graph. This is the only way to create one. Both nodes must already be in the graph. Loops and parallel edges are allowed. directed defaults to true.",
         request: { params: IdParams, ...body(EdgeInput) },
         responses: { 200: json(Edge, "The new edge.") },
       }),

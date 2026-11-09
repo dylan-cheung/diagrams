@@ -10,7 +10,7 @@ The app uses the labeled property graph model of ISO GQL (ISO/IEC 39075). In gra
 |---|---|---|
 | Node | `id`, `name`, `description`, `type`, `intent`, `status`, `labels[]`, `properties{}` | The core entity. A node does not store its edges. All fields except the name are optional. |
 | Edge | `id`, `source`, `target`, `directed`, `type`, `label`, `description`, `intent`, `status`, `properties{}` | Its own entity. Deleting a node deletes its edges. The editor shows the label, or the type name when the label is empty. |
-| Graph | `id`, `name`, `description` + its nodes (with `x`, `y`) and edges | A named subgraph. The API can put one node in many graphs, with a different position in each. When no graph holds a node or an edge any more, it is deleted. A graph can include an edge only if it includes both nodes. The description says what the graph is for. It is required when you create a graph. |
+| Graph | `id`, `name`, `description` + its nodes (with `x`, `y`) and edges | A named subgraph. Every node and edge is in a graph: you create them only in a graph (`POST /api/graphs/{id}/nodes` and `.../edges`), and when no graph holds one any more, it is deleted. The API can also put one node in many graphs, with a different position in each. A graph can include an edge only if it includes both nodes. The description says what the graph is for. It is required when you create a graph. |
 | Version | `graphId`, `version`, `hash`, `publishedAt`, `view` | A published copy of a graph that does not change. `view` holds the graph, its nodes with positions, and its edges as they were at publish time. Versions stay after the graph is deleted. |
 
 Property values are strings, numbers, booleans or `null`. Use `properties` for extensible metadata.

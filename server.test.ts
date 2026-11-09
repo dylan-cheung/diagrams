@@ -42,13 +42,14 @@ describe("API", () => {
   });
 
   test("returns 400, 404 and 409 with messages", async () => {
-    expect((await send("POST", "/api/nodes", { name: " " })).body).toEqual({ errors: ["A node needs a name."] });
-    expect((await send("POST", "/api/nodes", { name: "X", properties: { nested: { a: 1 } } })).body).toEqual({
+    const dup = (await send("POST", "/api/graphs", { name: "dup", description: "First." })).body;
+    expect((await send("POST", `/api/graphs/${dup.id}/nodes`, { name: " " })).body).toEqual({ errors: ["A node needs a name."] });
+    expect((await send("POST", `/api/graphs/${dup.id}/nodes`, { name: "X", properties: { nested: { a: 1 } } })).body).toEqual({
       errors: ["properties.nested: Property values must be a string, number, boolean or null."],
     });
+    expect((await fetch(new URL("/api/nodes", server.url), { method: "POST", body: JSON.stringify({ name: "Floating" }) })).ok).toBe(false);
     expect((await send("GET", "/api/nodes/missing")).body).toEqual({ errors: ["The node does not exist."] });
     expect((await send("GET", "/api/nodes/missing")).status).toBe(404);
-    await send("POST", "/api/graphs", { name: "dup", description: "First." });
     expect((await send("POST", "/api/graphs", { name: "dup", description: "Second." })).status).toBe(409);
     expect((await send("POST", "/api/graphs", { name: "no purpose" })).status).toBe(400);
     expect((await send("POST", "/api/graphs", { name: "blank purpose", description: " " })).body).toEqual({

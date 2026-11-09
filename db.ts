@@ -442,6 +442,8 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
   const dropOrphanNode = (id: string) =>
     db.query("DELETE FROM nodes WHERE id = $id AND NOT EXISTS (SELECT 1 FROM graph_nodes WHERE node_id = $id)").run({ id });
 
+  const inAnyGraph = db.query<{ found: number }, { id: string }>("SELECT 1 AS found FROM graph_edges WHERE edge_id = $id");
+
   const graphEdgeIds = db.query<{ edge_id: string }, { graphId: string }>("SELECT edge_id FROM graph_edges WHERE graph_id = $graphId");
 
   const detachEdge = (graphId: string, edgeId: string) => {
@@ -702,7 +704,6 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
 
     listNodes: () => db.query<NodeRow, []>("SELECT * FROM nodes ORDER BY name COLLATE NOCASE").all().map(toNode),
     getNode: requireNode,
-    createNode,
     updateNode,
     deleteNode: (id: string) => {
       requireNode(id);
@@ -711,8 +712,13 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
 
     listEdges: () => db.query<EdgeRow, []>("SELECT * FROM edges ORDER BY created_at, rowid").all().map(toEdge),
     getEdge: requireEdge,
-    createEdge,
-    updateEdge,
+    updateEdge: db.transaction((id: string, input: Partial<EdgeInput>) => {
+      const edge = updateEdge(id, input);
+      if (inAnyGraph.get({ id }) == null) {
+        throw new StoreError("The edge would leave every graph. Both nodes must be in a graph that holds the edge.", 400);
+      }
+      return edge;
+    }),
     deleteEdge: (id: string) => {
       requireEdge(id);
       db.query("DELETE FROM edges WHERE id = $id").run({ id });

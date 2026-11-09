@@ -181,11 +181,31 @@ describe("graphs", () => {
       "CREATE TABLE nodes (id TEXT PRIMARY KEY, name TEXT NOT NULL, labels TEXT NOT NULL DEFAULT '[]', properties TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
     );
     old.run("INSERT INTO nodes (id, name, created_at, updated_at) VALUES ('n1', 'old node', '2026-10-29T00:00:00.000Z', '2026-10-29T00:00:00.000Z')");
+    old.run("CREATE TABLE graph_nodes (graph_id TEXT NOT NULL, node_id TEXT NOT NULL, x REAL, y REAL, PRIMARY KEY (graph_id, node_id))");
+    old.run("INSERT INTO graph_nodes (graph_id, node_id) VALUES ('g1', 'n1')");
     old.close();
     const migrated = openGraphStore(path);
     expect(migrated.listGraphs()[0]).toMatchObject({ name: "legacy", description: "" });
     expect(migrated.listNodes()[0]).toMatchObject({ name: "old node", description: "", type: null, intent: "", status: null });
     migrated.close();
+  });
+
+  test("deletes nodes and edges that are in no graph when it opens", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "graphs-")), "orphans.sqlite");
+    const first = openGraphStore(path);
+    const one = first.createGraph({ name: "one", description: "Test graph one." });
+    const a = first.createNodeInGraph(one.id, { name: "A" }, null);
+    const b = first.createNodeInGraph(one.id, { name: "B" }, null);
+    first.createEdgeInGraph(one.id, { source: a.id, target: b.id });
+    first.close();
+    const raw = new Database(path);
+    raw.run("DELETE FROM graph_edges");
+    raw.query("DELETE FROM graph_nodes WHERE node_id = $id").run({ $id: b.id });
+    raw.close();
+    const reopened = openGraphStore(path);
+    expect(reopened.listNodes().map(({ name }) => name)).toEqual(["A"]);
+    expect(reopened.listEdges()).toEqual([]);
+    reopened.close();
   });
 });
 

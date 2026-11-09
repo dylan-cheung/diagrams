@@ -266,6 +266,8 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     const columns = db.query<{ name: string }, []>(`PRAGMA table_info(${table})`).all();
     if (!columns.some(({ name }) => name === column)) db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
+  db.run("DELETE FROM edges WHERE id NOT IN (SELECT edge_id FROM graph_edges)");
+  db.run("DELETE FROM nodes WHERE id NOT IN (SELECT node_id FROM graph_nodes)");
 
   const now = () => new Date().toISOString();
 

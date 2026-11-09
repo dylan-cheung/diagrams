@@ -10,7 +10,7 @@ The app uses the labeled property graph model of ISO GQL (ISO/IEC 39075). In gra
 |---|---|---|
 | Node | `id`, `name`, `description`, `type`, `intent`, `status`, `labels[]`, `properties{}` | The core entity. A node does not store its edges. All fields except the name are optional. |
 | Edge | `id`, `source`, `target`, `directed`, `type`, `label`, `description`, `intent`, `status`, `properties{}` | Its own entity. Deleting a node deletes its edges. The editor shows the label, or the type name when the label is empty. |
-| Graph | `id`, `name`, `description` + its nodes (with `x`, `y`) and edges | A named subgraph. Nodes and edges are shared, so one node can be in many graphs with a different position in each. A graph can include an edge only if it includes both nodes. The description says what the graph is for. It is required when you create a graph. |
+| Graph | `id`, `name`, `description` + its nodes (with `x`, `y`) and edges | A named subgraph. The API can put one node in many graphs, with a different position in each. When no graph holds a node or an edge any more, it is deleted. A graph can include an edge only if it includes both nodes. The description says what the graph is for. It is required when you create a graph. |
 | Version | `graphId`, `version`, `hash`, `publishedAt`, `view` | A published copy of a graph that does not change. `view` holds the graph, its nodes with positions, and its edges as they were at publish time. Versions stay after the graph is deleted. |
 
 Property values are strings, numbers, booleans or `null`. Use `properties` for extensible metadata.
@@ -78,9 +78,9 @@ The app opens at http://127.0.0.1:4848.
 
 ## Use
 
-- Add a graph on the left with a name and a description of its purpose. Edit both in the inspector. Add nodes with **Add node**, or add existing nodes from the **Node library**.
+- Add a graph on the left with a name and a description of its purpose. Edit both in the inspector. Add nodes with **Add node**. The app shows only the nodes of the open graph.
 - Drag from a dot on one node to a dot on another node to add an edge. Drag to the other dot on the same node to add a loop.
-- Select a node or an edge to edit it in the inspector. Set its type, status, description and intent there. **Remove from graph** keeps it in the library; **Delete everywhere** deletes it from every graph.
+- Select a node or an edge to edit it in the inspector. Set its type, status, description and intent there. **Delete node** or **Delete edge** removes it from this graph. It stays in other graphs that hold it.
 - Press Delete or Backspace to remove the selection from the graph.
 - **Auto layout** places all nodes with dagre. New nodes without a position are placed below the others. Dragged positions are saved for each graph.
 

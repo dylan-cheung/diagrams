@@ -14,10 +14,8 @@ export type InspectorActions = {
   publish: () => void;
   updateNode: (id: string, patch: NodePatch) => void;
   removeNodeFromGraph: (id: string) => void;
-  deleteNode: (id: string) => void;
   updateEdge: (id: string, patch: EdgePatch) => void;
   removeEdgeFromGraph: (id: string) => void;
-  deleteEdge: (id: string) => void;
   reviewProposal: (id: string) => void;
 };
 
@@ -64,20 +62,9 @@ const NodeInspector = ({ node, view, actions }: { node: GraphNode; view: GraphVi
       />
       <PropertiesField properties={node.properties} onCommit={(properties) => actions.updateNode(node.id, { properties })} />
       <p className="hint">{degree} edges in this graph.</p>
-      <div className="row">
-        <button type="button" onClick={() => actions.removeNodeFromGraph(node.id)}>
-          Remove from graph
-        </button>
-        <button
-          type="button"
-          className="danger"
-          onClick={() => {
-            if (confirm(`Delete "${node.name}" and all its edges from every graph?`)) actions.deleteNode(node.id);
-          }}
-        >
-          Delete everywhere
-        </button>
-      </div>
+      <button type="button" className="danger" onClick={() => actions.removeNodeFromGraph(node.id)}>
+        Delete node
+      </button>
       <p className="mono">{node.id}</p>
     </section>
   );
@@ -133,20 +120,9 @@ const EdgeInspector = ({ edge, view, actions }: { edge: GraphEdge; view: GraphVi
         </button>
       )}
       <PropertiesField properties={edge.properties} onCommit={(properties) => actions.updateEdge(edge.id, { properties })} />
-      <div className="row">
-        <button type="button" onClick={() => actions.removeEdgeFromGraph(edge.id)}>
-          Remove from graph
-        </button>
-        <button
-          type="button"
-          className="danger"
-          onClick={() => {
-            if (confirm("Delete this edge from every graph?")) actions.deleteEdge(edge.id);
-          }}
-        >
-          Delete everywhere
-        </button>
-      </div>
+      <button type="button" className="danger" onClick={() => actions.removeEdgeFromGraph(edge.id)}>
+        Delete edge
+      </button>
       <p className="mono">{edge.id}</p>
     </section>
   );
@@ -218,7 +194,7 @@ const GraphInspector = ({ view, actions }: { view: GraphView; actions: Inspector
       type="button"
       className="danger"
       onClick={() => {
-        if (confirm(`Delete the graph "${view.graph.name}"? Its nodes and edges stay in the library.`)) actions.deleteGraph();
+        if (confirm(`Delete the graph "${view.graph.name}"? Its nodes and edges are deleted too.`)) actions.deleteGraph();
       }}
     >
       Delete graph

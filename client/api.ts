@@ -45,17 +45,12 @@ export const api = {
   discardProposal: (id: string, proposalId: string) =>
     unwrap(graphs[":id"].proposals[":proposalId"].discard.$post({ param: { id, proposalId } })),
 
-  listNodes: () => unwrap(nodes.$get()),
   updateNode: (id: string, input: Partial<NodeInput>) => unwrap(nodes[":id"].$patch({ param: { id }, json: input })),
-  deleteNode: (id: string) => unwrap(nodes[":id"].$delete({ param: { id } })),
 
   updateEdge: (id: string, input: Partial<EdgeInput>) => unwrap(edges[":id"].$patch({ param: { id }, json: input })),
-  deleteEdge: (id: string) => unwrap(edges[":id"].$delete({ param: { id } })),
 
   createNodeInGraph: (id: string, input: NodeInput, position: Position | null) =>
     unwrap(graphs[":id"].nodes.$post({ param: { id }, json: { ...input, position } })),
-  addNodeToGraph: (id: string, nodeId: string, position: Position | null) =>
-    unwrap(graphs[":id"].nodes[":nodeId"].$put({ param: { id, nodeId }, json: { position } })),
   removeNodeFromGraph: (id: string, nodeId: string) =>
     unwrap(graphs[":id"].nodes[":nodeId"].$delete({ param: { id, nodeId } })),
   moveNodes: (id: string, positions: Record<string, Position>) =>

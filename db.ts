@@ -436,15 +436,29 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     touchGraph(graphId);
   };
 
-  const detachNode = (graphId: string, nodeId: string) => {
-    db.query(
-      "DELETE FROM graph_edges WHERE graph_id = $graphId AND edge_id IN (SELECT id FROM edges WHERE source = $nodeId OR target = $nodeId)",
-    ).run({ graphId, nodeId });
-    db.query("DELETE FROM graph_nodes WHERE graph_id = $graphId AND node_id = $nodeId").run({ graphId, nodeId });
+  const dropOrphanEdge = (id: string) =>
+    db.query("DELETE FROM edges WHERE id = $id AND NOT EXISTS (SELECT 1 FROM graph_edges WHERE edge_id = $id)").run({ id });
+
+  const dropOrphanNode = (id: string) =>
+    db.query("DELETE FROM nodes WHERE id = $id AND NOT EXISTS (SELECT 1 FROM graph_nodes WHERE node_id = $id)").run({ id });
+
+  const graphEdgeIds = db.query<{ edge_id: string }, { graphId: string }>("SELECT edge_id FROM graph_edges WHERE graph_id = $graphId");
+
+  const detachEdge = (graphId: string, edgeId: string) => {
+    db.query("DELETE FROM graph_edges WHERE graph_id = $graphId AND edge_id = $edgeId").run({ graphId, edgeId });
+    dropOrphanEdge(edgeId);
   };
 
-  const detachEdge = (graphId: string, edgeId: string) =>
-    db.query("DELETE FROM graph_edges WHERE graph_id = $graphId AND edge_id = $edgeId").run({ graphId, edgeId });
+  const detachNode = (graphId: string, nodeId: string) => {
+    const edgeIds = db
+      .query<{ id: string }, { graphId: string; nodeId: string }>(
+        "SELECT e.id FROM graph_edges ge JOIN edges e ON e.id = ge.edge_id WHERE ge.graph_id = $graphId AND (e.source = $nodeId OR e.target = $nodeId)",
+      )
+      .all({ graphId, nodeId });
+    for (const { id } of edgeIds) detachEdge(graphId, id);
+    db.query("DELETE FROM graph_nodes WHERE graph_id = $graphId AND node_id = $nodeId").run({ graphId, nodeId });
+    dropOrphanNode(nodeId);
+  };
 
   const view = (graphId: string): GraphView => {
     const graph = requireGraph(graphId);
@@ -736,10 +750,14 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       );
       return requireGraph(id);
     },
-    deleteGraph: (id: string) => {
+    deleteGraph: db.transaction((id: string) => {
       requireGraph(id);
+      const nodeIds = graphPositions.all({ graphId: id }).map(({ node_id }) => node_id);
+      const edgeIds = graphEdgeIds.all({ graphId: id }).map(({ edge_id }) => edge_id);
       db.query("DELETE FROM graphs WHERE id = $id").run({ id });
-    },
+      for (const edgeId of edgeIds) dropOrphanEdge(edgeId);
+      for (const nodeId of nodeIds) dropOrphanNode(nodeId);
+    }),
     view,
 
     publish,
@@ -781,11 +799,11 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       includeEdge(graphId, edge.id);
       return edge;
     }),
-    removeEdgeFromGraph: (graphId: string, edgeId: string) => {
+    removeEdgeFromGraph: db.transaction((graphId: string, edgeId: string) => {
       requireGraph(graphId);
       detachEdge(graphId, edgeId);
       touchGraph(graphId);
-    },
+    }),
 
     listProposals: (graphId: string) => {
       requireGraph(graphId);

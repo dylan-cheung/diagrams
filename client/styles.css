@@ -192,26 +192,6 @@ textarea {
   background: var(--accent-soft);
 }
 
-.library-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-}
-
-.library-item > span:first-child {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.library-item > :last-child {
-  flex-shrink: 0;
-}
-
 .meta {
   color: var(--muted);
   font-size: 12px;

@@ -82,6 +82,21 @@ describe("graphs", () => {
     expect(store.listNodes()).toHaveLength(2);
   });
 
+  test("removing a node or an edge from its only graph deletes it", () => {
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const a = store.createNodeInGraph(one.id, { name: "A" }, null);
+    const b = store.createNodeInGraph(one.id, { name: "B" }, null);
+    const c = store.createNodeInGraph(one.id, { name: "C" }, null);
+    const ab = store.createEdgeInGraph(one.id, { source: a.id, target: b.id });
+    store.createEdgeInGraph(one.id, { source: b.id, target: c.id });
+
+    store.removeEdgeFromGraph(one.id, ab.id);
+    expect(store.listEdges()).toHaveLength(1);
+    store.removeNodeFromGraph(one.id, c.id);
+    expect(store.listNodes().map(({ name }) => name)).toEqual(["A", "B"]);
+    expect(store.listEdges()).toEqual([]);
+  });
+
   test("an edge needs both nodes in the graph", () => {
     const one = store.createGraph({ name: "one", description: "Test graph one." });
     const a = store.createNodeInGraph(one.id, { name: "A" }, null);
@@ -103,14 +118,20 @@ describe("graphs", () => {
     expect(store.view(one.id).edges).toEqual([]);
   });
 
-  test("deleting a graph keeps its nodes and edges", () => {
+  test("deleting a graph deletes the nodes and edges that no other graph holds", () => {
     const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const two = store.createGraph({ name: "two", description: "Test graph two." });
     const a = store.createNodeInGraph(one.id, { name: "A" }, null);
+    store.createNodeInGraph(one.id, { name: "B" }, null);
     store.createEdgeInGraph(one.id, { source: a.id, target: a.id });
+    store.addNodeToGraph(two.id, a.id, null);
     store.deleteGraph(one.id);
-    expect(store.listGraphs()).toEqual([]);
-    expect(store.listNodes()).toHaveLength(1);
+    expect(store.listGraphs().map(({ name }) => name)).toEqual(["two"]);
+    expect(store.listNodes().map(({ name }) => name)).toEqual(["A"]);
     expect(store.listEdges()).toHaveLength(1);
+    store.deleteGraph(two.id);
+    expect(store.listNodes()).toEqual([]);
+    expect(store.listEdges()).toEqual([]);
   });
 
   test("graph names are unique", () => {
@@ -268,7 +289,7 @@ describe("proposals", () => {
     const proposal = store.createProposal(one.id, { title: "Drop B", nodes: [{ id: a.id }], edges: [] });
     store.applyProposal(one.id, proposal.id, false);
     expect(store.view(one.id)).toMatchObject({ nodes: [{ id: a.id }], edges: [] });
-    expect(store.getNode(b.id).name).toBe("B");
+    expect(() => store.getNode(b.id)).toThrow("The node does not exist.");
   });
 
   test("a discarded proposal cannot be applied or revised", () => {

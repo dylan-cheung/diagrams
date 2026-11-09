@@ -1,8 +1,7 @@
 import { ReactFlowProvider } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { autoLayout } from "../layout.ts";
-import type { GraphNode, GraphSummary, GraphVersionSummary, GraphView, Position, ProposalSummary, Vocabulary } from "../model.ts";
-import { termName } from "../vocabulary.ts";
+import type { GraphSummary, GraphVersionSummary, GraphView, Position, ProposalSummary, Vocabulary } from "../model.ts";
 import { ApiError, api } from "./api.ts";
 import { GraphCanvas, type Selection } from "./canvas.tsx";
 import { Inspector, type InspectorActions } from "./inspector.tsx";
@@ -16,7 +15,6 @@ const withPositions = (view: GraphView, positions: Record<string, Position>): Gr
 
 export const App = () => {
   const [graphs, setGraphs] = useState<GraphSummary[]>([]);
-  const [library, setLibrary] = useState<GraphNode[]>([]);
   const [view, setView] = useState<GraphView | null>(null);
   const [versions, setVersions] = useState<GraphVersionSummary[]>([]);
   const [proposals, setProposals] = useState<ProposalSummary[]>([]);
@@ -26,7 +24,6 @@ export const App = () => {
   const [errors, setErrors] = useState<string[]>([]);
   const [newGraphName, setNewGraphName] = useState("");
   const [newGraphDescription, setNewGraphDescription] = useState("");
-  const [search, setSearch] = useState("");
   const [vocabulary, setVocabulary] = useState<Vocabulary>({ nodeTypes: [], relationshipTypes: [], statuses: [] });
 
   const loadView = useCallback(async (graphId: string) => {
@@ -40,15 +37,13 @@ export const App = () => {
 
   const refresh = useCallback(
     async (graphId: string | null) => {
-      const [nextGraphs, nextLibrary, nextView, nextVersions, nextProposals] = await Promise.all([
+      const [nextGraphs, nextView, nextVersions, nextProposals] = await Promise.all([
         api.listGraphs(),
-        api.listNodes(),
         graphId == null ? Promise.resolve(null) : loadView(graphId),
         graphId == null ? Promise.resolve([]) : api.listVersions(graphId),
         graphId == null ? Promise.resolve([]) : api.listProposals(graphId),
       ]);
       setGraphs(nextGraphs);
-      setLibrary(nextLibrary);
       setView(nextView);
       setVersions(nextVersions);
       setProposals(nextProposals);
@@ -84,11 +79,6 @@ export const App = () => {
   }, [refresh]);
 
   const graphId = view?.graph.id ?? null;
-  const inGraph = useMemo(() => new Set(view?.nodes.map(({ id }) => id) ?? []), [view]);
-  const tagsOf = (node: GraphNode) => [termName(vocabulary.nodeTypes, node.type), ...node.labels].filter((tag) => tag != null);
-  const filteredLibrary = library.filter((node) =>
-    `${node.name} ${tagsOf(node).join(" ")}`.toLowerCase().includes(search.trim().toLowerCase()),
-  );
 
   const openGraph = (id: string) => {
     setSelection(null);
@@ -122,10 +112,8 @@ export const App = () => {
           },
           updateNode: (id, patch) => void run(() => api.updateNode(id, patch)),
           removeNodeFromGraph: (id) => void run(() => api.removeNodeFromGraph(graphId, id)),
-          deleteNode: (id) => void run(() => api.deleteNode(id)),
           updateEdge: (id, patch) => void run(() => api.updateEdge(id, patch)),
           removeEdgeFromGraph: (id) => void run(() => api.removeEdgeFromGraph(graphId, id)),
-          deleteEdge: (id) => void run(() => api.deleteEdge(id)),
           reviewProposal: (id) => {
             setErrors([]);
             setReviewing(id);
@@ -192,28 +180,6 @@ export const App = () => {
                       {graph.nodeCount} nodes · {graph.edgeCount} edges
                     </span>
                   </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section className="sidebar-section">
-            <h1>Node library</h1>
-            <input placeholder="Search nodes, types and labels" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <ul className="list">
-              {filteredLibrary.map((node) => (
-                <li key={node.id} className="library-item">
-                  <span>
-                    {node.name}
-                    {tagsOf(node).length > 0 && <span className="meta"> · {tagsOf(node).join(", ")}</span>}
-                  </span>
-                  {graphId != null &&
-                    (inGraph.has(node.id) ? (
-                      <span className="meta">in graph</span>
-                    ) : (
-                      <button type="button" onClick={() => void run(() => api.addNodeToGraph(graphId, node.id, null))}>
-                        Add
-                      </button>
-                    ))}
                 </li>
               ))}
             </ul>

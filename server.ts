@@ -9,7 +9,7 @@ import { DEFAULT_VOCABULARY } from "./vocabulary.ts";
 
 const PORT = Number(process.env.PORT ?? 4848);
 const DB_PATH =
-  process.env.GRAPH_DB ?? join(homedir(), "Library", "Application Support", "graphs", "graphs.sqlite");
+  process.env.GRAPH_DB ?? join(homedir(), "Library", "Application Support", "diagram", "graphs.sqlite");
 
 const loadVocabulary = (path: string | undefined): Vocabulary => {
   if (path == null || path === "") return DEFAULT_VOCABULARY;

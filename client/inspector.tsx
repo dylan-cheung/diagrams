@@ -1,4 +1,4 @@
-import { normalizeLabels, type GraphEdge, type GraphInput, type GraphNode, type GraphVersionSummary, type GraphView, type ProposalSummary } from "../model.ts";
+import { normalizeLabels, type GraphEdge, type GraphInput, type GraphNode, type GraphView } from "../model.ts";
 import { PropertiesField, SelectField, TextAreaField, TextField } from "./fields.tsx";
 import { useVocabulary } from "./vocabulary.ts";
 
@@ -11,12 +11,10 @@ type EdgePatch = Partial<
 export type InspectorActions = {
   updateGraph: (patch: Partial<GraphInput>) => void;
   deleteGraph: () => void;
-  publish: () => void;
   updateNode: (id: string, patch: NodePatch) => void;
   removeNodeFromGraph: (id: string) => void;
   updateEdge: (id: string, patch: EdgePatch) => void;
   removeEdgeFromGraph: (id: string) => void;
-  reviewProposal: (id: string) => void;
 };
 
 const nameOf = (view: GraphView, id: string) => view.nodes.find((node) => node.id === id)?.name ?? id;
@@ -128,55 +126,6 @@ const EdgeInspector = ({ edge, view, actions }: { edge: GraphEdge; view: GraphVi
   );
 };
 
-const Versions = ({ versions, notice, actions }: { versions: GraphVersionSummary[]; notice: string | null; actions: InspectorActions }) => (
-  <section className="section">
-    <h2>Versions</h2>
-    <p className="hint">Apps run a published version. A version does not change when you edit the graph.</p>
-    <button type="button" onClick={actions.publish}>
-      Publish
-    </button>
-    {notice != null && <p className="hint">{notice}</p>}
-    {versions.length === 0 ? (
-      <p className="hint">Not published.</p>
-    ) : (
-      <ul className="versions">
-        {versions.map((version) => (
-          <li key={version.version}>
-            <span>Version {version.version}</span>
-            <span className="meta">{new Date(version.publishedAt).toLocaleString()}</span>
-          </li>
-        ))}
-      </ul>
-    )}
-  </section>
-);
-
-const Proposals = ({ proposals, actions }: { proposals: ProposalSummary[]; actions: InspectorActions }) => (
-  <section className="section">
-    <h2>Proposals</h2>
-    <p className="hint">A proposal is a changed copy of the graph, for example from Claude. Review it against a version before you apply it.</p>
-    {proposals.length === 0 ? (
-      <p className="hint">No proposals.</p>
-    ) : (
-      <ul className="list">
-        {proposals.map((proposal) => (
-          <li key={proposal.id}>
-            <button type="button" onClick={() => actions.reviewProposal(proposal.id)}>
-              <span>
-                {proposal.title} <span className={`badge badge-status-${proposal.status}`}>{proposal.status}</span>
-              </span>
-              <span className="meta">
-                {proposal.workItem !== "" && `${proposal.workItem} · `}
-                {new Date(proposal.createdAt).toLocaleString()}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    )}
-  </section>
-);
-
 const GraphInspector = ({ view, actions }: { view: GraphView; actions: InspectorActions }) => (
   <section className="section">
     <h2>Graph</h2>
@@ -205,16 +154,10 @@ const GraphInspector = ({ view, actions }: { view: GraphView; actions: Inspector
 
 export const Inspector = ({
   view,
-  versions,
-  proposals,
-  notice,
   selection,
   actions,
 }: {
   view: GraphView;
-  versions: GraphVersionSummary[];
-  proposals: ProposalSummary[];
-  notice: string | null;
   selection: { kind: "node" | "edge"; id: string } | null;
   actions: InspectorActions;
 }) => {
@@ -222,11 +165,5 @@ export const Inspector = ({
   const edge = selection?.kind === "edge" ? view.edges.find(({ id }) => id === selection.id) : undefined;
   if (node != null) return <NodeInspector key={node.id} node={node} view={view} actions={actions} />;
   if (edge != null) return <EdgeInspector key={edge.id} edge={edge} view={view} actions={actions} />;
-  return (
-    <>
-      <GraphInspector key={view.graph.id} view={view} actions={actions} />
-      <Proposals proposals={proposals} actions={actions} />
-      <Versions versions={versions} notice={notice} actions={actions} />
-    </>
-  );
+  return <GraphInspector key={view.graph.id} view={view} actions={actions} />;
 };

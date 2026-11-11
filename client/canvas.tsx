@@ -16,7 +16,7 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { assignParallelSlots, edgePath, loopPath, type Box, type ParallelSlot } from "../geometry.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
 import type { ChangeStatus, GraphContent, Position, Vocabulary } from "../model.ts";
@@ -43,24 +43,16 @@ const EntityNodeView = ({ data, selected }: NodeProps<EntityNode>) => {
       className={`entity${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}`}
       style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
     >
-      <Handle id="in" type="target" position={HandlePosition.Left} className="target-handle" />
-      {(data.type != null || status != null) && (
-        <div className="entity-design">
-          <span className="entity-type">{termName(vocabulary.nodeTypes, data.type)}</span>
-          {status != null && <span className="entity-status">{status}</span>}
-        </div>
-      )}
+      <Handle id="in" type="target" position={HandlePosition.Left} />
+      {data.type != null && <div className="entity-kind">{termName(vocabulary.nodeTypes, data.type)}</div>}
       <div className="entity-name">{data.name}</div>
-      {data.labels.length > 0 && (
-        <div className="entity-labels">
-          {data.labels.map((label) => (
-            <span key={label} className="chip">
-              {label}
-            </span>
-          ))}
+      {(status != null || data.labels.length > 0) && (
+        <div className="entity-meta">
+          {status != null && <span className="entity-status">{status}</span>}
+          {data.labels.length > 0 && <span>{data.labels.join(" · ")}</span>}
         </div>
       )}
-      <Handle id="out" type="source" position={HandlePosition.Right} className="source-handle" />
+      <Handle id="out" type="source" position={HandlePosition.Right} />
     </div>
   );
 };
@@ -102,6 +94,8 @@ const FloatingEdgeView = ({ id, source, target, data, label, markerEnd, selected
     </>
   );
 };
+
+const PRO_OPTIONS = { hideAttribution: true };
 
 const NODE_TYPES = { entity: EntityNodeView };
 const EDGE_TYPES = { floating: FloatingEdgeView };
@@ -146,6 +140,7 @@ export const GraphCanvas = ({
   onRemove,
   marks,
   readOnly = false,
+  children,
 }: {
   view: GraphContent;
   selection: Selection;
@@ -155,6 +150,7 @@ export const GraphCanvas = ({
   onRemove?: (nodeIds: string[], edgeIds: string[]) => void;
   marks?: Marks;
   readOnly?: boolean;
+  children?: ReactNode;
 }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityNode>(toFlowNodes(view, selection, marks));
   useEffect(() => setNodes(toFlowNodes(view, selection, marks)), [view, selection, marks, setNodes]);
@@ -163,6 +159,8 @@ export const GraphCanvas = ({
 
   return (
     <ReactFlow
+      className={readOnly ? "read-only" : "editing"}
+      proOptions={PRO_OPTIONS}
       nodes={nodes}
       edges={edges}
       nodeTypes={NODE_TYPES}
@@ -189,12 +187,13 @@ export const GraphCanvas = ({
       }
       deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
       fitView
-      fitViewOptions={{ padding: 0.25, maxZoom: 1.2 }}
-      minZoom={0.2}
+      fitViewOptions={{ padding: 0.15, maxZoom: 1.1 }}
+      minZoom={0.15}
     >
       <Background gap={20} />
       <Controls showInteractive={false} />
-      <MiniMap pannable zoomable />
+      <MiniMap pannable zoomable style={{ width: 140, height: 100 }} />
+      {children}
     </ReactFlow>
   );
 };

@@ -53,7 +53,7 @@ A proposal is a changed copy of a graph that you review before it changes the gr
 1. Read the graph with `GET /api/graphs/{id}`.
 2. Send the full proposed graph to `POST /api/graphs/{id}/proposals`. Use existing ids to keep or change nodes and edges, and new keys (for example `review-step`) for new ones. Omitted fields keep the existing value. A node or edge that is not in the list leaves the graph.
 3. Read the changes with `GET /api/graphs/{id}/proposals/{proposalId}/diff`. `against` is `latest` (the default), a version number, or `draft`.
-4. In the app, open the proposal from **Proposals** in the inspector. The **Ledger** tab lists each added, removed and changed node and edge, with the fields before and after. The **Graph** tab shows both graphs on one canvas in color. A warning shows when a changed node is also in other graphs, because the change applies there too.
+4. In the app, open the proposal from **Proposals** in the panel of the **View** mode, or at `/graphs/{id}/proposals/{proposalId}`. The **Ledger** tab lists each added, removed and changed node and edge, with the fields before and after. The **Graph** tab shows both graphs on one canvas in color. A warning shows when a changed node is also in other graphs, because the change applies there too.
 5. **Apply and publish** makes the graph equal to the proposal and publishes a new version. **Apply to draft** changes only the editable graph. Apply replaces edits that are not published. Use `PUT` on the proposal to revise it.
 
 Not supported: hyperedges (one edge with more than two nodes), nested nodes, and schemas that limit which labels can connect.
@@ -78,7 +78,9 @@ The app opens at http://127.0.0.1:4848.
 
 ## Use
 
-- Add a graph on the left with a name and a description of its purpose. Edit both in the inspector. Add nodes with **Add node**. The app shows only the nodes of the open graph.
+- The first page is a table of graphs. Search it, and click a column name to sort it. The table shows the latest version, a **draft** mark when the draft has changes that are not published, and the number of open proposals. Click **New graph** to add a graph with a name and a description of its purpose.
+- Click a graph to open it in **View** mode (`/graphs/{id}`). View mode is read-only: select a node or an edge to see its details, and pick a published version to show. The panel also lists proposals and versions.
+- Click **Edit** (`/graphs/{id}/edit`) to change the draft. Edit the graph name and purpose in the panel. Add nodes with **Add node**, and click **Publish** to save a version. The app shows only the nodes of the open graph.
 - Drag from a dot on one node to a dot on another node to add an edge. Drag to the other dot on the same node to add a loop.
 - Select a node or an edge to edit it in the inspector. Set its type, status, description and intent there. **Delete node** or **Delete edge** removes it from this graph. It stays in other graphs that hold it.
 - Press Delete or Backspace to remove the selection from the graph.

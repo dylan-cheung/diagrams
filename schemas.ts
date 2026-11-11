@@ -96,7 +96,13 @@ export const Graph = z
   })
   .openapi("Graph");
 
-export const GraphSummary = Graph.extend({ nodeCount: z.number().int(), edgeCount: z.number().int() }).openapi("GraphSummary");
+export const GraphSummary = Graph.extend({
+  nodeCount: z.number().int(),
+  edgeCount: z.number().int(),
+  published: z.number().int().nullable().openapi({ description: "The latest published version, or null when the graph is not published." }),
+  changed: z.boolean().openapi({ description: "The draft has changes that are not in the latest published version." }),
+  openProposals: z.number().int().openapi({ description: "The number of open proposals." }),
+}).openapi("GraphSummary");
 
 export const PlacedNode = Node.extend({ position: Position.nullable() }).openapi("PlacedNode");
 

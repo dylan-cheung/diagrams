@@ -728,14 +728,25 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
 
     listGraphs: (): GraphSummary[] =>
       db
-        .query<GraphRow & { node_count: number; edge_count: number }, []>(
+        .query<GraphRow & { node_count: number; edge_count: number; open_proposals: number }, []>(
           `SELECT g.*,
             (SELECT COUNT(*) FROM graph_nodes WHERE graph_id = g.id) AS node_count,
-            (SELECT COUNT(*) FROM graph_edges WHERE graph_id = g.id) AS edge_count
+            (SELECT COUNT(*) FROM graph_edges WHERE graph_id = g.id) AS edge_count,
+            (SELECT COUNT(*) FROM proposals WHERE graph_id = g.id AND status = 'open') AS open_proposals
            FROM graphs g ORDER BY g.name COLLATE NOCASE`,
         )
         .all()
-        .map((row) => ({ ...toGraph(row), nodeCount: row.node_count, edgeCount: row.edge_count })),
+        .map((row) => {
+          const latest = latestVersion.get({ graphId: row.id });
+          return {
+            ...toGraph(row),
+            nodeCount: row.node_count,
+            edgeCount: row.edge_count,
+            published: latest?.version ?? null,
+            changed: latest != null && latest.hash !== contentHash(view(row.id)),
+            openProposals: row.open_proposals,
+          };
+        }),
     createGraph: (input: GraphInput) => {
       const id = crypto.randomUUID();
       const stamp = now();

@@ -252,6 +252,17 @@ describe("published versions", () => {
     expect(store.getVersion(two.id, 1).view.nodes[0]?.name).toBe("A");
   });
 
+  test("the graph list shows the latest version, draft changes and open proposals", () => {
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const a = store.createNodeInGraph(one.id, { name: "A" }, null);
+    expect(store.listGraphs()[0]).toMatchObject({ published: null, changed: false, openProposals: 0 });
+    store.publish(one.id);
+    expect(store.listGraphs()[0]).toMatchObject({ published: 1, changed: false });
+    store.updateNode(a.id, { name: "A2" });
+    store.createProposal(one.id, { title: "Rename", nodes: [{ id: a.id, name: "A3" }], edges: [] });
+    expect(store.listGraphs()[0]).toMatchObject({ published: 1, changed: true, openProposals: 1 });
+  });
+
   test("versions stay after the graph is deleted", () => {
     const one = store.createGraph({ name: "one", description: "Test graph one." });
     store.createNodeInGraph(one.id, { name: "A" }, null);

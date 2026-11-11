@@ -1,5 +1,5 @@
 {
-  "name": "graphs",
+  "name": "diagram",
   "module": "server.ts",
   "type": "module",
   "private": true,
@@ -8,7 +8,7 @@
     "dev": "bun --hot server.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "build": "bun build --compile --target=bun-darwin-arm64 --production server.ts --outfile dist/graphs"
+    "build": "bun build --compile --target=bun-darwin-arm64 --production server.ts --outfile dist/diagram"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",

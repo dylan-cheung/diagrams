@@ -6,7 +6,7 @@ import { openGraphStore, type GraphStore } from "./db.ts";
 
 const PORT = Number(process.env.PORT ?? 4848);
 const DB_PATH =
-  process.env.GRAPH_DB ?? join(homedir(), "Library", "Application Support", "graphs", "graphs.sqlite");
+  process.env.GRAPH_DB ?? join(homedir(), "Library", "Application Support", "diagram", "graphs.sqlite");
 
 export const createServer = (store: GraphStore, port = PORT) => {
   const api = createApi(store);

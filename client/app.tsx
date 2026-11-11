@@ -164,7 +164,7 @@ export const App = () => {
     <div className="app">
       <aside className="sidebar">
         <section className="sidebar-section">
-          <h1>Graphs</h1>
+          <h1>Diagram</h1>
           <form className="graph-form" onSubmit={createGraph}>
             <input placeholder="New graph name" value={newGraphName} onChange={(e) => setNewGraphName(e.target.value)} required />
             <textarea

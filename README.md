@@ -1,4 +1,4 @@
-# graphs
+# diagram
 
 A local macOS app to keep and edit graphs. It runs a Bun server (Hono) on `127.0.0.1`, opens a React Flow editor in your browser, and stores everything in SQLite.
 
@@ -54,10 +54,10 @@ The app opens at http://127.0.0.1:4848.
 | Variable | Default | Use |
 |---|---|---|
 | `PORT` | `4848` | Server port |
-| `GRAPH_DB` | `~/Library/Application Support/graphs/graphs.sqlite` | Database file |
+| `GRAPH_DB` | `~/Library/Application Support/diagram/graphs.sqlite` | Database file |
 | `OPEN_BROWSER` | on | Set `0` to not open the browser |
 
-`bun run build` makes one binary, `dist/graphs`, that holds the server and the UI.
+`bun run build` makes one binary, `dist/diagram`, that holds the server and the UI.
 
 ## Use
 

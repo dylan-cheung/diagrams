@@ -43,11 +43,21 @@ const NewGraphDialog = ({ onClose }: { onClose: () => void }) => {
 
   return (
     <dialog ref={dialog} className="dialog" onClose={onClose}>
-      <form className="section" onSubmit={(event) => void submit(event)}>
+      <form className="section" autoComplete="off" onSubmit={(event) => void submit(event)}>
         <h2>New graph</h2>
         <label className="field">
           <span>Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            autoFocus
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-bwignore
+            data-form-type="other"
+          />
         </label>
         <label className="field">
           <span>Purpose</span>

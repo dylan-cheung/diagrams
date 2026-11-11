@@ -111,7 +111,7 @@ export const GraphList = () => {
   return (
     <div className="app">
       <header className="toolbar">
-        <h1>Graphs</h1>
+        <h1>Diagram</h1>
         <input className="search" type="search" placeholder="Search by name, ID or purpose" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
         <span className="spacer" />
         <button type="button" className="primary" onClick={() => setCreating(true)}>

@@ -6,13 +6,17 @@ export type ParallelSlot = { index: number; count: number };
 
 const center = (box: Box): Point => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
 
-export const boxBorderPoint = (box: Box, toward: Point): Point => {
+const clamp = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value));
+
+export const sideAnchor = (box: Box, toward: Point, shift: Point = { x: 0, y: 0 }): Point => {
   const c = center(box);
   const dx = toward.x - c.x;
   const dy = toward.y - c.y;
   if (dx === 0 && dy === 0) return c;
-  const scale = 1 / Math.max(Math.abs(dx) / (box.width / 2), Math.abs(dy) / (box.height / 2));
-  return { x: c.x + dx * scale, y: c.y + dy * scale };
+  if (Math.abs(dx) / box.width >= Math.abs(dy) / box.height) {
+    return { x: dx > 0 ? box.x + box.width : box.x, y: c.y + clamp(shift.y, box.height / 2 - 8) };
+  }
+  return { x: c.x + clamp(shift.x, box.width / 2 - 8), y: dy > 0 ? box.y + box.height : box.y };
 };
 
 export const parallelOffset = ({ index, count }: ParallelSlot, spacing = 36) => (index - (count - 1) / 2) * spacing;
@@ -25,8 +29,9 @@ export const edgePath = (sourceBox: Box, targetBox: Box, slot: ParallelSlot, fli
   const ny = length === 0 ? 0 : (tc.x - sc.x) / length;
   const offset = parallelOffset(slot) * (flip ? -1 : 1);
   const control = { x: (sc.x + tc.x) / 2 + nx * offset * 2, y: (sc.y + tc.y) / 2 + ny * offset * 2 };
-  const start = boxBorderPoint(sourceBox, offset === 0 ? tc : control);
-  const end = boxBorderPoint(targetBox, offset === 0 ? sc : control);
+  const shift = { x: (nx * offset) / 2, y: (ny * offset) / 2 };
+  const start = sideAnchor(sourceBox, tc, shift);
+  const end = sideAnchor(targetBox, sc, shift);
   const label = {
     x: 0.25 * start.x + 0.5 * control.x + 0.25 * end.x,
     y: 0.25 * start.y + 0.5 * control.y + 0.25 * end.y,

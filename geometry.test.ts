@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { assignParallelSlots, boxBorderPoint, edgePath, parallelOffset } from "./geometry.ts";
+import { assignParallelSlots, edgePath, parallelOffset, sideAnchor } from "./geometry.ts";
 import { parsePropertyValue } from "./model.ts";
 
 describe("geometry", () => {
-  test("finds where a line from the center leaves the box", () => {
+  test("anchors an edge at the center of the box side that faces the other node", () => {
     const box = { x: 0, y: 0, width: 100, height: 50 };
-    expect(boxBorderPoint(box, { x: 500, y: 25 })).toEqual({ x: 100, y: 25 });
-    expect(boxBorderPoint(box, { x: 50, y: -500 })).toEqual({ x: 50, y: 0 });
+    expect(sideAnchor(box, { x: 500, y: 200 })).toEqual({ x: 100, y: 25 });
+    expect(sideAnchor(box, { x: -500, y: -100 })).toEqual({ x: 0, y: 25 });
+    expect(sideAnchor(box, { x: 80, y: -500 })).toEqual({ x: 50, y: 0 });
+    expect(sideAnchor(box, { x: 20, y: 500 })).toEqual({ x: 50, y: 50 });
   });
 
   test("groups parallel edges in both directions and loops", () => {
@@ -27,6 +29,8 @@ describe("geometry", () => {
     const a = { x: 0, y: 0, width: 100, height: 50 };
     const b = { x: 300, y: 0, width: 100, height: 50 };
     expect(edgePath(a, b, { index: 0, count: 1 }, false).path).toBe("M100 25 L300 25");
+    const lower = { x: 300, y: 120, width: 100, height: 50 };
+    expect(edgePath(a, lower, { index: 0, count: 1 }, false).path).toBe("M100 25 L300 145");
     expect(edgePath(a, b, { index: 0, count: 2 }, false).path).toStartWith("M");
     expect(edgePath(a, b, { index: 0, count: 2 }, false).path).toContain("Q");
   });

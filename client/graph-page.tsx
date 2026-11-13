@@ -240,6 +240,20 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
       <header className="toolbar">
         {toolbarStart}
         <span className="spacer" />
+        <div className="tabs" role="group" aria-label="Layout direction">
+          {DIRECTIONS.map((item) => (
+            <button
+              key={item.direction}
+              type="button"
+              className={draft?.graph.direction === item.direction ? "active" : ""}
+              aria-pressed={draft?.graph.direction === item.direction}
+              onClick={() => relayout(item.direction)}
+              disabled={draft == null}
+            >
+              {item.name}
+            </button>
+          ))}
+        </div>
         {mode === "view" && versions.length > 0 && (
           <select
             className="version-select"
@@ -264,20 +278,6 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
             <button type="button" onClick={() => relayout(draft?.graph.direction ?? "horizontal")} disabled={draft == null || draft.nodes.length === 0}>
               Auto layout
             </button>
-            <div className="tabs" role="group" aria-label="Layout direction">
-              {DIRECTIONS.map((item) => (
-                <button
-                  key={item.direction}
-                  type="button"
-                  className={draft?.graph.direction === item.direction ? "active" : ""}
-                  aria-pressed={draft?.graph.direction === item.direction}
-                  onClick={() => relayout(item.direction)}
-                  disabled={draft == null}
-                >
-                  {item.name}
-                </button>
-              ))}
-            </div>
             <button type="button" className="primary" onClick={() => void publish()} disabled={summary == null || (published != null && !summary.changed)}>
               Publish
             </button>

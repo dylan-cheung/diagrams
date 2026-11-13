@@ -86,11 +86,16 @@ export const Edge = z
   })
   .openapi("Edge");
 
+export const LayoutDirection = z
+  .enum(["horizontal", "vertical"])
+  .openapi("LayoutDirection", { description: "The direction in which auto layout places the nodes of the graph." });
+
 export const Graph = z
   .object({
     id: Id,
     name: z.string().openapi({ example: "people" }),
     description: z.string().openapi({ example: "Who works with whom on the payments team." }),
+    direction: LayoutDirection,
     createdAt: Timestamp,
     updatedAt: Timestamp,
   })
@@ -162,7 +167,7 @@ export const GraphInput = z
   })
   .openapi("GraphInput");
 
-export const GraphPatch = GraphInput.partial().openapi("GraphPatch");
+export const GraphPatch = GraphInput.partial().extend({ direction: LayoutDirection.optional() }).openapi("GraphPatch");
 
 export const ContentNode = z
   .object({
@@ -241,7 +246,7 @@ export const ProposalInput = z
     title: Name("A proposal needs a title."),
     rationale: z.string().optional().openapi({ description: "Why the change is necessary.", example: "Callers with a claim number skip the lookup step." }),
     workItem: z.string().optional().openapi({ description: "The ticket, document or link the change is for.", example: "PROJ-12345" }),
-    graph: GraphPatch.optional(),
+    graph: GraphInput.partial().optional(),
     nodes: z.array(ProposedNode).openapi({ description: "Every node of the proposed graph. A node that is not in the list leaves the graph." }),
     edges: z.array(ProposedEdge).openapi({ description: "Every edge of the proposed graph. An edge that is not in the list leaves the graph." }),
   })
@@ -336,6 +341,8 @@ export type GraphVersion = z.infer<typeof GraphVersion>;
 export type NodeInput = z.infer<typeof NodeInput>;
 export type EdgeInput = z.infer<typeof EdgeInput>;
 export type GraphInput = z.infer<typeof GraphInput>;
+export type GraphPatch = z.infer<typeof GraphPatch>;
+export type LayoutDirection = z.infer<typeof LayoutDirection>;
 export type ContentNode = z.infer<typeof ContentNode>;
 export type ContentEdge = z.infer<typeof ContentEdge>;
 export type GraphContent = z.infer<typeof GraphContent>;

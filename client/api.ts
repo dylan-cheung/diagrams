@@ -1,6 +1,6 @@
 import { hc, type ClientResponse } from "hono/client";
 import type { AppType } from "../api.ts";
-import type { EdgeInput, GraphInput, NodeInput, Position } from "../model.ts";
+import type { EdgeInput, GraphInput, GraphPatch, NodeInput, Position } from "../model.ts";
 
 export class ApiError extends Error {
   constructor(readonly errors: string[]) {
@@ -28,7 +28,7 @@ export const api = {
   vocabulary: () => unwrap(client.api.vocabulary.$get()),
   listGraphs: () => unwrap(graphs.$get()),
   createGraph: (input: GraphInput) => unwrap(graphs.$post({ json: input })),
-  updateGraph: (id: string, input: Partial<GraphInput>) => unwrap(graphs[":id"].$patch({ param: { id }, json: input })),
+  updateGraph: (id: string, input: GraphPatch) => unwrap(graphs[":id"].$patch({ param: { id }, json: input })),
   deleteGraph: (id: string) => unwrap(graphs[":id"].$delete({ param: { id } })),
   view: (id: string) => unwrap(graphs[":id"].$get({ param: { id } })),
   publish: (id: string) => unwrap(graphs[":id"].versions.$post({ param: { id } })),

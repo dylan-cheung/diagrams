@@ -1,12 +1,17 @@
 import dagre from "@dagrejs/dagre";
-import type { ContentEdge, ContentNode, Position } from "./model.ts";
+import type { ContentEdge, ContentNode, LayoutDirection, Position } from "./model.ts";
 
 export const NODE_WIDTH = 180;
 export const NODE_HEIGHT = 56;
 
-export const autoLayout = (nodes: Pick<ContentNode, "id" | "position">[], edges: Pick<ContentEdge, "id" | "source" | "target">[], onlyUnplaced: boolean) => {
+export const autoLayout = (
+  nodes: Pick<ContentNode, "id" | "position">[],
+  edges: Pick<ContentEdge, "id" | "source" | "target">[],
+  onlyUnplaced: boolean,
+  direction: LayoutDirection,
+) => {
   const g = new dagre.graphlib.Graph({ multigraph: true });
-  g.setGraph({ rankdir: "LR", nodesep: 50, ranksep: 110, marginx: 20, marginy: 20 });
+  g.setGraph({ rankdir: direction === "vertical" ? "TB" : "LR", nodesep: 50, ranksep: direction === "vertical" ? 80 : 110, marginx: 20, marginy: 20 });
   g.setDefaultEdgeLabel(() => ({}));
   for (const node of nodes) g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
   for (const edge of edges) if (edge.source !== edge.target) g.setEdge(edge.source, edge.target, {}, edge.id);

@@ -172,6 +172,15 @@ describe("graphs", () => {
     expect(store.listGraphs()[0]).toMatchObject({ description: "A new purpose." });
   });
 
+  test("a graph keeps its layout direction, and the direction is not a change to publish", () => {
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    expect(one.direction).toBe("horizontal");
+    store.publish(one.id);
+    const updated = store.updateGraph(one.id, { direction: "vertical" });
+    expect(updated).toMatchObject({ name: "one", direction: "vertical" });
+    expect(store.listGraphs()[0]).toMatchObject({ direction: "vertical", changed: false });
+  });
+
   test("adds the description columns to a database made before they existed", () => {
     const path = join(mkdtempSync(join(tmpdir(), "graphs-")), "old.sqlite");
     const old = new Database(path, { create: true });
@@ -185,7 +194,7 @@ describe("graphs", () => {
     old.run("INSERT INTO graph_nodes (graph_id, node_id) VALUES ('g1', 'n1')");
     old.close();
     const migrated = openGraphStore(path);
-    expect(migrated.listGraphs()[0]).toMatchObject({ name: "legacy", description: "" });
+    expect(migrated.listGraphs()[0]).toMatchObject({ name: "legacy", description: "", direction: "horizontal" });
     expect(migrated.listNodes()[0]).toMatchObject({ name: "old node", description: "", type: null, intent: "", status: null });
     migrated.close();
   });

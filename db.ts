@@ -14,11 +14,13 @@ import {
   type GraphContent,
   type GraphEdge,
   type GraphInput,
+  type GraphPatch,
   type GraphNode,
   type GraphSummary,
   type GraphVersion,
   type GraphVersionSummary,
   type GraphView,
+  type LayoutDirection,
   type NodeInput,
   type Position,
   type Properties,
@@ -57,7 +59,7 @@ type EdgeRow = {
   updated_at: string;
 };
 
-type GraphRow = { id: string; name: string; description: string; created_at: string; updated_at: string };
+type GraphRow = { id: string; name: string; description: string; direction: LayoutDirection; created_at: string; updated_at: string };
 
 type VersionRow = { graph_id: string; version: number; hash: string; published_at: string };
 
@@ -117,6 +119,7 @@ const toGraph = (row: GraphRow): Graph => ({
   id: row.id,
   name: row.name,
   description: row.description,
+  direction: row.direction,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -206,6 +209,7 @@ CREATE TABLE IF NOT EXISTS graphs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
   description TEXT NOT NULL DEFAULT '',
+  direction TEXT NOT NULL DEFAULT 'horizontal',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -247,6 +251,7 @@ CREATE INDEX IF NOT EXISTS proposals_graph ON proposals(graph_id);
 const ADDED_COLUMNS: [string, string, string][] = [
   ["nodes", "description", "TEXT NOT NULL DEFAULT ''"],
   ["graphs", "description", "TEXT NOT NULL DEFAULT ''"],
+  ["graphs", "direction", "TEXT NOT NULL DEFAULT 'horizontal'"],
   ["nodes", "type", "TEXT"],
   ["nodes", "intent", "TEXT NOT NULL DEFAULT ''"],
   ["nodes", "status", "TEXT"],
@@ -757,13 +762,14 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       );
       return requireGraph(id);
     },
-    updateGraph: (id: string, input: Partial<GraphInput>) => {
+    updateGraph: (id: string, input: GraphPatch) => {
       const graph = requireGraph(id);
       uniqueName(() =>
-        db.query("UPDATE graphs SET name = $name, description = $description, updated_at = $now WHERE id = $id").run({
+        db.query("UPDATE graphs SET name = $name, description = $description, direction = $direction, updated_at = $now WHERE id = $id").run({
           id,
           name: input.name?.trim() ?? graph.name,
           description: input.description?.trim() ?? graph.description,
+          direction: input.direction ?? graph.direction,
           now: now(),
         }),
       );

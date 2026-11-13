@@ -85,6 +85,7 @@ The app opens at http://127.0.0.1:4848.
 - Select a node or an edge to edit it in the inspector. Set its type, status, description and intent there. **Delete node** or **Delete edge** removes it from this graph. It stays in other graphs that hold it.
 - Press Delete or Backspace to remove the selection from the graph.
 - **Auto layout** places all nodes with dagre. New nodes without a position are placed below the others. Dragged positions are saved for each graph.
+- **Horizontal** and **Vertical** set the layout direction of the graph and place all nodes again in that direction. Each graph keeps its direction, and **Auto layout** uses it. The direction is not a change to publish (`direction` on `PATCH /api/graphs/{id}`).
 
 ## API
 

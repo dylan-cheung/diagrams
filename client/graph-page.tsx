@@ -2,7 +2,7 @@ import { Panel, ReactFlowProvider } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toContent } from "../diff.ts";
 import { autoLayout } from "../layout.ts";
-import type { GraphContent, GraphSummary, GraphVersion, GraphVersionSummary, GraphView, Position, ProposalSummary } from "../model.ts";
+import type { GraphContent, GraphSummary, GraphVersion, GraphVersionSummary, GraphView, LayoutDirection, Position, ProposalSummary } from "../model.ts";
 import { ApiError, api } from "./api.ts";
 import { GraphCanvas, type Selection } from "./canvas.tsx";
 import { Inspector, type InspectorActions } from "./inspector.tsx";
@@ -15,6 +15,11 @@ type GraphRoute = Exclude<Route, { page: "list" }>;
 const MODES: { mode: Mode; name: string }[] = [
   { mode: "view", name: "View" },
   { mode: "edit", name: "Edit" },
+];
+
+const DIRECTIONS: { direction: LayoutDirection; name: string }[] = [
+  { direction: "horizontal", name: "Horizontal" },
+  { direction: "vertical", name: "Vertical" },
 ];
 
 const withPositions = (view: GraphView, positions: Record<string, Position>): GraphView => ({
@@ -46,7 +51,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
   const loadDraft = useCallback(async () => {
     const next = await api.view(graphId);
     if (!next.nodes.some(({ position }) => position == null)) return next;
-    const positions = autoLayout(next.nodes, next.edges, true);
+    const positions = autoLayout(next.nodes, next.edges, true, next.graph.direction);
     await api.moveNodes(graphId, positions);
     return withPositions(next, positions);
   }, [graphId]);
@@ -132,9 +137,12 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     if (node != null) setSelection({ kind: "node", id: node.id });
   };
 
-  const relayout = () => {
+  const relayout = (direction: LayoutDirection) => {
     if (draft == null) return;
-    void run(() => api.moveNodes(graphId, autoLayout(draft.nodes, draft.edges, false)));
+    void run(async () => {
+      if (direction !== draft.graph.direction) await api.updateGraph(graphId, { direction });
+      await api.moveNodes(graphId, autoLayout(draft.nodes, draft.edges, false, direction));
+    });
   };
 
   const publish = async () => {
@@ -253,9 +261,23 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
             <button type="button" onClick={() => void addNode()} disabled={draft == null}>
               Add node
             </button>
-            <button type="button" onClick={relayout} disabled={draft == null || draft.nodes.length === 0}>
+            <button type="button" onClick={() => relayout(draft?.graph.direction ?? "horizontal")} disabled={draft == null || draft.nodes.length === 0}>
               Auto layout
             </button>
+            <div className="tabs" role="group" aria-label="Layout direction">
+              {DIRECTIONS.map((item) => (
+                <button
+                  key={item.direction}
+                  type="button"
+                  className={draft?.graph.direction === item.direction ? "active" : ""}
+                  aria-pressed={draft?.graph.direction === item.direction}
+                  onClick={() => relayout(item.direction)}
+                  disabled={draft == null}
+                >
+                  {item.name}
+                </button>
+              ))}
+            </div>
             <button type="button" className="primary" onClick={() => void publish()} disabled={summary == null || (published != null && !summary.changed)}>
               Publish
             </button>

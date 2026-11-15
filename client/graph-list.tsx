@@ -127,6 +127,7 @@ export const GraphList = () => {
         <button type="button" className="primary" onClick={() => setCreating(true)}>
           New graph
         </button>
+        <Link to={{ page: "guide" }}>Guide</Link>
         <a href="/docs" target="_blank" rel="noreferrer">
           API
         </a>

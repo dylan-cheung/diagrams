@@ -2,10 +2,11 @@ import { useMemo, useSyncExternalStore, type AnchorHTMLAttributes, type MouseEve
 
 export type Mode = "view" | "edit";
 
-export type Route = { page: "list" } | { page: "graph"; graphId: string; mode: Mode } | { page: "proposal"; graphId: string; proposalId: string };
+export type Route = { page: "list" } | { page: "guide" } | { page: "graph"; graphId: string; mode: Mode } | { page: "proposal"; graphId: string; proposalId: string };
 
 export const parsePath = (pathname: string): Route => {
   const [root, graphId, part, proposalId] = pathname.split("/").filter((segment) => segment !== "").map(decodeURIComponent);
+  if (root === "guide") return { page: "guide" };
   if (root !== "graphs" || graphId == null) return { page: "list" };
   if (part === "proposals" && proposalId != null) return { page: "proposal", graphId, proposalId };
   return { page: "graph", graphId, mode: part === "edit" ? "edit" : "view" };
@@ -13,6 +14,7 @@ export const parsePath = (pathname: string): Route => {
 
 export const routePath = (route: Route) => {
   if (route.page === "list") return "/";
+  if (route.page === "guide") return "/guide";
   const base = `/graphs/${encodeURIComponent(route.graphId)}`;
   if (route.page === "proposal") return `${base}/proposals/${encodeURIComponent(route.proposalId)}`;
   return route.mode === "edit" ? `${base}/edit` : base;

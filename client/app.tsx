@@ -3,6 +3,7 @@ import type { Vocabulary } from "../model.ts";
 import { api } from "./api.ts";
 import { GraphList } from "./graph-list.tsx";
 import { GraphPage } from "./graph-page.tsx";
+import { Guide } from "./guide.tsx";
 import { useRoute } from "./router.tsx";
 import { VocabularyContext } from "./vocabulary.ts";
 
@@ -16,7 +17,7 @@ export const App = () => {
 
   return (
     <VocabularyContext value={vocabulary}>
-      {route.page === "list" ? <GraphList /> : <GraphPage key={route.graphId} route={route} />}
+      {route.page === "list" ? <GraphList /> : route.page === "guide" ? <Guide /> : <GraphPage key={route.graphId} route={route} />}
     </VocabularyContext>
   );
 };

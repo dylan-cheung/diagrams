@@ -10,7 +10,7 @@ import { ProposalReview } from "./review.tsx";
 import { go, Link, type Mode, type Route } from "./router.tsx";
 import { ViewPanel, type Shown } from "./view-panel.tsx";
 
-type GraphRoute = Exclude<Route, { page: "list" }>;
+type GraphRoute = Exclude<Route, { page: "list" } | { page: "guide" }>;
 
 const MODES: { mode: Mode; name: string }[] = [
   { mode: "view", name: "View" },
@@ -283,6 +283,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
             </button>
           </>
         )}
+        <Link to={{ page: "guide" }}>Guide</Link>
         <a href="/docs" target="_blank" rel="noreferrer">
           API
         </a>

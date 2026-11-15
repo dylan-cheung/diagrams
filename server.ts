@@ -26,6 +26,7 @@ export const createServer = (store: GraphStore, port = PORT) => {
     routes: {
       "/": index,
       "/graphs/*": index,
+      "/guide": index,
       "/favicon.ico": new Response(null, { status: 204 }),
     },
     fetch: api.fetch,

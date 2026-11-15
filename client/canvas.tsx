@@ -35,6 +35,15 @@ const markClass = (mark: ChangeStatus | undefined) => (mark == null ? "" : ` mar
 
 const designClass = ({ type, status }: Design) => `${type == null ? "" : ` type-${type}`}${status == null ? "" : ` status-${status}`}`;
 
+// Every dot is a source handle. In loose connection mode a source handle can also end an edge, so a drag can start or end on any side.
+// The node where the drag starts is the source of the edge.
+const HANDLES = [
+  { id: "top", position: HandlePosition.Top },
+  { id: "right", position: HandlePosition.Right },
+  { id: "bottom", position: HandlePosition.Bottom },
+  { id: "left", position: HandlePosition.Left },
+];
+
 const EntityNodeView = ({ data, selected }: NodeProps<EntityNode>) => {
   const vocabulary = useVocabulary();
   const status = termName(vocabulary.statuses, data.status);
@@ -43,7 +52,9 @@ const EntityNodeView = ({ data, selected }: NodeProps<EntityNode>) => {
       className={`entity${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}`}
       style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
     >
-      <Handle id="in" type="target" position={HandlePosition.Left} />
+      {HANDLES.map(({ id, position }) => (
+        <Handle key={id} id={id} type="source" position={position} />
+      ))}
       {data.type != null && <div className="entity-kind">{termName(vocabulary.nodeTypes, data.type)}</div>}
       <div className="entity-name">{data.name}</div>
       {(status != null || data.labels.length > 0) && (
@@ -52,7 +63,6 @@ const EntityNodeView = ({ data, selected }: NodeProps<EntityNode>) => {
           {data.labels.length > 0 && <span>{data.labels.join(" · ")}</span>}
         </div>
       )}
-      <Handle id="out" type="source" position={HandlePosition.Right} />
     </div>
   );
 };
@@ -116,8 +126,8 @@ const toFlowEdges = (view: GraphContent, vocabulary: Vocabulary, selection: Sele
     type: "floating",
     source: edge.source,
     target: edge.target,
-    sourceHandle: "out",
-    targetHandle: "in",
+    sourceHandle: "right",
+    targetHandle: "left",
     label: edge.label !== "" ? edge.label : (termName(vocabulary.relationshipTypes, edge.type) ?? ""),
     markerEnd: edge.directed ? { type: MarkerType.ArrowClosed, width: 18, height: 18 } : undefined,
     data: {

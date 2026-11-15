@@ -129,7 +129,7 @@ export const Guide = () => {
                 The graph opens in <b>Edit</b> mode. Click <b>Add node</b> for each thing in the graph.
               </li>
               <li>Select a node. In the inspector, set its name, type, status, description and intent.</li>
-              <li>Drag from a dot on one node to a dot on another node. This adds an edge. Select the edge and set its type, label and direction.</li>
+              <li>Drag from any dot on one node to any dot on another node. This adds an edge. The node where the drag starts is the source. Select the edge and set its type, label and direction.</li>
               <li>
                 Click <b>Auto layout</b> to place the nodes. Use <b>Horizontal</b> or <b>Vertical</b> to set the flow direction.
               </li>
@@ -204,7 +204,7 @@ export const Guide = () => {
                 side by side.
               </li>
               <li>
-                <b>Loops.</b> An edge can start and end on the same node, for example a retry. To add a loop, drag from one dot to the other dot on the same node.
+                <b>Loops.</b> An edge can start and end on the same node, for example a retry. To add a loop, drag from one dot to another dot on the same node.
               </li>
               <li>
                 <b>Cycles.</b> Edges can form a cycle, for example A → B → C → A.

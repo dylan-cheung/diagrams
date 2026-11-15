@@ -82,7 +82,7 @@ The app opens at http://127.0.0.1:4848.
 - The first page is a table of graphs. Search it, and click a column name to sort it. The table shows the latest version, a **draft** mark when the draft has changes that are not published, and the number of open proposals. Click **New graph** to add a graph with a name and a description of its purpose.
 - Click a graph to open it in **View** mode (`/graphs/{id}`). View mode is read-only: select a node or an edge to see its details, and pick a published version to show. The panel also lists proposals and versions.
 - Click **Edit** (`/graphs/{id}/edit`) to change the draft. Edit the graph name and purpose in the panel. Add nodes with **Add node**, and click **Publish** to save a version. The app shows only the nodes of the open graph.
-- Drag from a dot on one node to a dot on another node to add an edge. Drag to the other dot on the same node to add a loop.
+- Each node has a dot on each side. Drag from any dot on one node to any dot on another node to add an edge. The node where the drag starts is the source. Drag to another dot on the same node to add a loop.
 - Select a node or an edge to edit it in the inspector. Set its type, status, description and intent there. **Delete node** or **Delete edge** removes it from this graph. It stays in other graphs that hold it.
 - Press Delete or Backspace to remove the selection from the graph.
 - **Auto layout** places all nodes with dagre. New nodes without a position are placed below the others. Dragged positions are saved for each graph.

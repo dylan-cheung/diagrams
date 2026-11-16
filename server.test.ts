@@ -103,6 +103,26 @@ describe("proposals API", () => {
   });
 });
 
+describe("flows", () => {
+  test("adds, changes and deletes a flow, and rejects a step that does not follow an edge", async () => {
+    const graph = (await send("POST", "/api/graphs", { name: "flow graph", description: "Flow test." })).body;
+    const a = (await send("POST", `/api/graphs/${graph.id}/nodes`, { name: "A" })).body;
+    const b = (await send("POST", `/api/graphs/${graph.id}/nodes`, { name: "B" })).body;
+    await send("POST", `/api/graphs/${graph.id}/edges`, { source: a.id, target: b.id });
+    const path = `/api/graphs/${graph.id}/flows`;
+
+    const created = await send("POST", path, { name: "Main", steps: [{ nodeId: a.id }, { nodeId: b.id }] });
+    expect(created.status).toBe(200);
+    expect((await send("POST", path, { name: "Back", steps: [{ nodeId: b.id }, { nodeId: a.id }] })).body).toEqual({
+      errors: ["Step 2: no edge goes from B to A."],
+    });
+    expect((await send("PATCH", `${path}/${created.body.id}`, { name: "Happy path" })).body.name).toBe("Happy path");
+    expect((await send("GET", `/api/graphs/${graph.id}`)).body.flows).toHaveLength(1);
+    expect((await send("DELETE", `${path}/${created.body.id}`)).status).toBe(204);
+    expect((await send("GET", `${path}/${created.body.id}`)).status).toBe(404);
+  });
+});
+
 describe("API docs", () => {
   test("the OpenAPI spec lists every route", async () => {
     const spec = (await send("GET", "/openapi.json")).body;
@@ -116,6 +136,8 @@ describe("API docs", () => {
       "/api/graphs/{id}/draft",
       "/api/graphs/{id}/edges",
       "/api/graphs/{id}/edges/{edgeId}",
+      "/api/graphs/{id}/flows",
+      "/api/graphs/{id}/flows/{flowId}",
       "/api/graphs/{id}/layout",
       "/api/graphs/{id}/nodes",
       "/api/graphs/{id}/nodes/{nodeId}",

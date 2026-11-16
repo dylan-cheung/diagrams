@@ -124,8 +124,27 @@ export const Route = z.array(Position).nullable().openapi("Route", {
 
 export const PlacedEdge = Edge.extend({ route: Route }).openapi("PlacedEdge");
 
+export const FlowStep = z
+  .object({
+    nodeId: Id.openapi({ description: "The node that the flow is at in this step." }),
+    edgeId: Id.nullable().openapi({ description: "The edge that the flow takes from the node of the step before to this node. It is null on the first step." }),
+  })
+  .openapi("FlowStep");
+
+export const Flow = z
+  .object({
+    id: Id,
+    graphId: Id,
+    name: z.string().openapi({ example: "Caller has a claim number" }),
+    description: z.string().openapi({ example: "The caller gives the claim number at once, so the lookup step is skipped." }),
+    steps: z.array(FlowStep).openapi({ description: "The steps in order. A node can be in more than one step, for example in a loop." }),
+    createdAt: Timestamp,
+    updatedAt: Timestamp,
+  })
+  .openapi("Flow", { description: "A sequence of steps through the graph: one specific path, for example the main path of a feature or an edge case." });
+
 export const GraphView = z
-  .object({ graph: Graph, nodes: z.array(PlacedNode), edges: z.array(PlacedEdge) })
+  .object({ graph: Graph, nodes: z.array(PlacedNode), edges: z.array(PlacedEdge), flows: z.array(Flow) })
   .openapi("GraphView");
 
 export const GraphVersionSummary = z
@@ -181,6 +200,26 @@ export const GraphInput = z
   .openapi("GraphInput");
 
 export const GraphPatch = GraphInput.partial().extend({ direction: LayoutDirection.optional() }).openapi("GraphPatch");
+
+export const FlowStepInput = z
+  .object({
+    nodeId: z.string().min(1, { error: "A step needs a node." }).openapi({ description: "The id of a node in the graph." }),
+    edgeId: z.string().min(1).nullable().optional().openapi({
+      description:
+        "The id of the edge from the node of the step before to this node. Omit it when exactly one edge in the graph connects the two nodes in that direction. The first step has no edge.",
+    }),
+  })
+  .openapi("FlowStepInput");
+
+export const FlowInput = z
+  .object({
+    name: Name("A flow needs a name."),
+    description: z.string().optional().openapi({ example: "The caller gives the claim number at once, so the lookup step is skipped." }),
+    steps: z.array(FlowStepInput).optional().openapi({ description: "The steps in order. Each step after the first must follow an edge of the graph." }),
+  })
+  .openapi("FlowInput");
+
+export const FlowPatch = FlowInput.partial().openapi("FlowPatch");
 
 export const ContentNode = z
   .object({
@@ -366,6 +405,9 @@ export type PlacedEdge = z.infer<typeof PlacedEdge>;
 export type LayoutInput = z.infer<typeof LayoutInput>;
 export type DraftState = z.infer<typeof DraftState>;
 export type GraphView = z.infer<typeof GraphView>;
+export type Flow = z.infer<typeof Flow>;
+export type FlowStep = z.infer<typeof FlowStep>;
+export type FlowInput = z.infer<typeof FlowInput>;
 export type GraphVersionSummary = z.infer<typeof GraphVersionSummary>;
 export type GraphVersion = z.infer<typeof GraphVersion>;
 export type NodeInput = z.infer<typeof NodeInput>;

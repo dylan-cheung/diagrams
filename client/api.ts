@@ -1,6 +1,6 @@
 import { hc, type ClientResponse } from "hono/client";
 import type { AppType } from "../api.ts";
-import type { DraftState, EdgeInput, GraphInput, GraphPatch, LayoutInput, NodeInput, Position } from "../model.ts";
+import type { DraftState, EdgeInput, FlowInput, GraphInput, GraphPatch, LayoutInput, NodeInput, Position } from "../model.ts";
 
 export class ApiError extends Error {
   constructor(readonly errors: string[]) {
@@ -35,6 +35,11 @@ export const api = {
   listVersions: (id: string) => unwrap(graphs[":id"].versions.$get({ param: { id } })),
   getVersion: (id: string, version: number | "latest") =>
     unwrap(graphs[":id"].versions[":version"].$get({ param: { id, version: String(version) } })),
+
+  createFlow: (id: string, input: FlowInput) => unwrap(graphs[":id"].flows.$post({ param: { id }, json: input })),
+  updateFlow: (id: string, flowId: string, input: Partial<FlowInput>) =>
+    unwrap(graphs[":id"].flows[":flowId"].$patch({ param: { id, flowId }, json: input })),
+  deleteFlow: (id: string, flowId: string) => unwrap(graphs[":id"].flows[":flowId"].$delete({ param: { id, flowId } })),
 
   listProposals: (id: string) => unwrap(graphs[":id"].proposals.$get({ param: { id } })),
   getProposal: (id: string, proposalId: string) => unwrap(graphs[":id"].proposals[":proposalId"].$get({ param: { id, proposalId } })),

@@ -9,6 +9,9 @@ import {
   EdgeInput,
   EdgePatch,
   ErrorBody,
+  Flow,
+  FlowInput,
+  FlowPatch,
   Graph,
   GraphInput,
   GraphPatch,
@@ -49,6 +52,7 @@ const DiffQuery = z.object({
     .optional()
     .openapi({ param: { name: "against", in: "query" }, example: "latest" }),
 });
+const FlowParams = z.object({ id: pathParam("id"), flowId: pathParam("flowId") });
 const GraphEdgeParams = z.object({ id: pathParam("id"), edgeId: pathParam("edgeId") });
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({
@@ -60,7 +64,7 @@ const body = <T extends z.ZodType>(schema: T) => ({ body: { content: { "applicat
 
 const errors = {
   400: json(ErrorBody, "The request is not valid."),
-  404: json(ErrorBody, "A graph, node or edge in the path does not exist."),
+  404: json(ErrorBody, "A graph, node, edge, flow or proposal in the path does not exist."),
   409: json(ErrorBody, "The graph name is already used, or the proposal is not open."),
 };
 
@@ -69,7 +73,7 @@ const noContent = { 204: { description: "Done." } };
 const route = <const T extends Parameters<typeof createRoute>[0]>(config: T) =>
   createRoute({ ...config, responses: { ...errors, ...config.responses } });
 
-const tag = { vocabulary: ["Vocabulary"], nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], proposals: ["Proposals"] };
+const tag = { vocabulary: ["Vocabulary"], nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], flows: ["Flows"], proposals: ["Proposals"] };
 
 export const createApi = (store: GraphStore) => {
   const app = new OpenAPIHono({
@@ -396,6 +400,69 @@ export const createApi = (store: GraphStore) => {
     .openapi(
       route({
         method: "get",
+        path: "/api/graphs/{id}/flows",
+        tags: tag.flows,
+        summary: "List the flows of a graph",
+        description:
+          "A flow is a sequence of steps through the graph: one specific path, for example the main path of a feature or one of its edge cases. A graph can have many flows. GET /api/graphs/{id} also returns them.",
+        request: { params: IdParams },
+        responses: { 200: json(z.array(Flow), "Every flow of the draft, oldest first.") },
+      }),
+      (c) => c.json(store.listFlows(c.req.valid("param").id), 200),
+    )
+    .openapi(
+      route({
+        method: "post",
+        path: "/api/graphs/{id}/flows",
+        tags: tag.flows,
+        summary: "Add a flow to a graph",
+        description:
+          "Each step names a node of the graph. Each step after the first follows an edge from the node of the step before: give its edgeId, or omit it when exactly one edge connects the two nodes in that direction. An undirected edge goes both ways. A flow is part of the draft, so a publish saves it in the version.",
+        request: { params: IdParams, ...body(FlowInput) },
+        responses: { 200: json(Flow, "The new flow.") },
+      }),
+      (c) => c.json(store.createFlow(c.req.valid("param").id, c.req.valid("json")), 200),
+    )
+    .openapi(
+      route({
+        method: "get",
+        path: "/api/graphs/{id}/flows/{flowId}",
+        tags: tag.flows,
+        summary: "Get a flow",
+        request: { params: FlowParams },
+        responses: { 200: json(Flow, "The flow.") },
+      }),
+      (c) => {
+        const { id, flowId } = c.req.valid("param");
+        return c.json(store.getFlow(id, flowId), 200);
+      },
+    )
+    .openapi(
+      route({
+        method: "patch",
+        path: "/api/graphs/{id}/flows/{flowId}",
+        tags: tag.flows,
+        summary: "Change a flow",
+        description: "Omitted fields keep their value. steps replaces all the steps, with the same rules as when you add a flow.",
+        request: { params: FlowParams, ...body(FlowPatch) },
+        responses: { 200: json(Flow, "The changed flow.") },
+      }),
+      (c) => {
+        const { id, flowId } = c.req.valid("param");
+        return c.json(store.updateFlow(id, flowId, c.req.valid("json")), 200);
+      },
+    )
+    .openapi(
+      route({ method: "delete", path: "/api/graphs/{id}/flows/{flowId}", tags: tag.flows, summary: "Delete a flow", request: { params: FlowParams }, responses: noContent }),
+      (c) => {
+        const { id, flowId } = c.req.valid("param");
+        store.deleteFlow(id, flowId);
+        return c.body(null, 204);
+      },
+    )
+    .openapi(
+      route({
+        method: "get",
         path: "/api/graphs/{id}/proposals",
         tags: tag.proposals,
         summary: "List the proposals for a graph",
@@ -498,9 +565,9 @@ export const createApi = (store: GraphStore) => {
     openapi: "3.1.0",
     info: {
       title: "Diagram API",
-      version: "4.2.0",
+      version: "4.3.0",
       description:
-        "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A published version is a copy of a graph that does not change. A proposal is a proposed graph that you compare with a version before you apply it. The Guide page of the app (/guide) explains each part.",
+        "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A flow is a sequence of steps through a graph: one specific path, such as an edge case of a feature. A published version is a copy of a graph, with its flows, that does not change. A proposal is a proposed graph that you compare with a version before you apply it. The Guide page of the app (/guide) explains each part.",
     },
   });
   app.get("/docs", Scalar({ url: "/openapi.json", pageTitle: "Diagram API", showDeveloperTools: "never" }));

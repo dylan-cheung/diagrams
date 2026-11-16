@@ -285,6 +285,79 @@ describe("published versions", () => {
   });
 });
 
+describe("flows", () => {
+  const setup = () => {
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const a = store.createNodeInGraph(one.id, { name: "A" }, null);
+    const b = store.createNodeInGraph(one.id, { name: "B" }, null);
+    const c = store.createNodeInGraph(one.id, { name: "C" }, null);
+    const ab = store.createEdgeInGraph(one.id, { source: a.id, target: b.id });
+    const bc = store.createEdgeInGraph(one.id, { source: b.id, target: c.id, directed: false });
+    return { one, a, b, c, ab, bc };
+  };
+
+  test("a flow is a path of steps along the edges of the graph", () => {
+    const { one, a, b, c, ab, bc } = setup();
+    const flow = store.createFlow(one.id, { name: "Main path", steps: [{ nodeId: a.id }, { nodeId: b.id }, { nodeId: c.id }, { nodeId: b.id }] });
+    expect(flow.steps).toEqual([
+      { nodeId: a.id, edgeId: null },
+      { nodeId: b.id, edgeId: ab.id },
+      { nodeId: c.id, edgeId: bc.id },
+      { nodeId: b.id, edgeId: bc.id },
+    ]);
+    expect(store.view(one.id).flows.map(({ name }) => name)).toEqual(["Main path"]);
+    expect(store.listFlows(one.id)).toHaveLength(1);
+  });
+
+  test("rejects a step that does not follow an edge in its direction", () => {
+    const { one, a, b, c, ab } = setup();
+    expect(() => store.createFlow(one.id, { name: "Back", steps: [{ nodeId: b.id }, { nodeId: a.id }] })).toThrow("Step 2: no edge goes from B to A.");
+    expect(() => store.createFlow(one.id, { name: "Skip", steps: [{ nodeId: a.id }, { nodeId: c.id, edgeId: ab.id }] })).toThrow(
+      `Step 2: the edge ${ab.id} does not go from A to C.`,
+    );
+    expect(() => store.createFlow(one.id, { name: "Start", steps: [{ nodeId: a.id, edgeId: ab.id }] })).toThrow("Step 1: the first step has no edge.");
+    expect(() => store.createFlow(one.id, { name: "Outside", steps: [{ nodeId: "nope" }] })).toThrow("Step 1: the node nope is not in the graph.");
+  });
+
+  test("a step needs the edge id when parallel edges connect the two nodes", () => {
+    const { one, a, b } = setup();
+    const other = store.createEdgeInGraph(one.id, { source: a.id, target: b.id, label: "retry" });
+    expect(() => store.createFlow(one.id, { name: "Two", steps: [{ nodeId: a.id }, { nodeId: b.id }] })).toThrow("more than one edge goes from A to B");
+    const flow = store.createFlow(one.id, { name: "Two", steps: [{ nodeId: a.id }, { nodeId: b.id, edgeId: other.id }] });
+    expect(flow.steps[1]?.edgeId).toBe(other.id);
+  });
+
+  test("a flow changes the draft, and a version keeps the flows as they were", () => {
+    const { one, a, b, c } = setup();
+    const before = store.publish(one.id);
+    const flow = store.createFlow(one.id, { name: "Main path", steps: [{ nodeId: a.id }, { nodeId: b.id }] });
+    expect(store.listGraphs()[0]?.changed).toBe(true);
+    expect(store.publish(one.id).version).toBe(before.version + 1);
+    store.updateFlow(one.id, flow.id, { name: "Happy path", steps: [{ nodeId: a.id }, { nodeId: b.id }, { nodeId: c.id }] });
+    expect(store.getVersion(one.id, 2).view.flows.map(({ name, steps }) => [name, steps.length])).toEqual([["Main path", 2]]);
+    expect(store.getVersion(one.id, 1).view.flows).toEqual([]);
+    store.deleteFlow(one.id, flow.id);
+    expect(store.listFlows(one.id)).toEqual([]);
+    expect(() => store.getFlow(one.id, flow.id)).toThrow("The flow does not exist.");
+  });
+
+  test("the content hash does not change for a graph without flows", () => {
+    const { one, a, b } = setup();
+    const view = store.view(one.id);
+    const { flows: _, ...withoutFlows } = view;
+    expect(contentHash(view)).toBe(contentHash({ ...withoutFlows, flows: [] }));
+    store.createFlow(one.id, { name: "Main path", steps: [{ nodeId: a.id }, { nodeId: b.id }] });
+    expect(contentHash(store.view(one.id))).not.toBe(contentHash(view));
+  });
+
+  test("deleting the graph deletes its flows", () => {
+    const { one, a } = setup();
+    const flow = store.createFlow(one.id, { name: "Only A", steps: [{ nodeId: a.id }] });
+    store.deleteGraph(one.id);
+    expect(() => store.getFlow(one.id, flow.id)).toThrow("The flow does not exist.");
+  });
+});
+
 describe("proposals", () => {
   const setup = () => {
     const one = store.createGraph({ name: "one", description: "Test graph one." });

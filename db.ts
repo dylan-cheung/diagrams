@@ -12,6 +12,9 @@ import {
   type ContentEdge,
   type ContentNode,
   type EdgeInput,
+  type Flow,
+  type FlowInput,
+  type FlowStep,
   type Graph,
   type GraphContent,
   type GraphEdge,
@@ -64,6 +67,8 @@ type EdgeRow = {
 type GraphRow = { id: string; name: string; description: string; direction: LayoutDirection; created_at: string; updated_at: string };
 
 type VersionRow = { graph_id: string; version: number; hash: string; published_at: string };
+
+type FlowRow = { id: string; graph_id: string; name: string; description: string; steps: string; created_at: string; updated_at: string };
 
 type PlacedNodeRow = NodeRow & { x: number | null; y: number | null };
 
@@ -145,6 +150,16 @@ const toProposalSummary = (row: ProposalRow): ProposalSummary => ({
   updatedAt: row.updated_at,
 });
 
+const toFlow = (row: FlowRow): Flow => ({
+  id: row.id,
+  graphId: row.graph_id,
+  name: row.name,
+  description: row.description,
+  steps: JSON.parse(row.steps) as FlowStep[],
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
 type NodeFields = Omit<ContentNode, "id" | "position">;
 
 type EdgeFields = Omit<ContentEdge, "id">;
@@ -166,7 +181,7 @@ const sortKeys = (properties: Properties) => Object.fromEntries(Object.entries(p
 
 const byId = <T extends { id: string }>(items: T[]) => [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
-export const contentHash = ({ graph, nodes, edges }: GraphView) =>
+export const contentHash = ({ graph, nodes, edges, flows }: GraphView) =>
   createHash("sha256")
     .update(
       JSON.stringify({
@@ -174,6 +189,7 @@ export const contentHash = ({ graph, nodes, edges }: GraphView) =>
         description: graph.description,
         nodes: byId(nodes).map((n) => [n.id, n.name, n.description, n.labels, sortKeys(n.properties), ...designOf(NODE_DESIGN_DEFAULTS, n)]),
         edges: byId(edges).map((e) => [e.id, e.source, e.target, e.directed, e.label, sortKeys(e.properties), ...designOf(EDGE_DESIGN_DEFAULTS, e)]),
+        ...(flows.length > 0 && { flows: byId(flows).map((f) => [f.id, f.name, f.description, f.steps.map((step) => [step.nodeId, step.edgeId])]) }),
       }),
     )
     .digest("hex");
@@ -248,6 +264,16 @@ CREATE TABLE IF NOT EXISTS proposals (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS proposals_graph ON proposals(graph_id);
+CREATE TABLE IF NOT EXISTS flows (
+  id TEXT PRIMARY KEY,
+  graph_id TEXT NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  steps TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS flows_graph ON flows(graph_id);
 `;
 
 const ADDED_COLUMNS: [string, string, string][] = [
@@ -486,6 +512,9 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     dropOrphanNode(nodeId);
   };
 
+  const flowsOf = db.query<FlowRow, { graphId: string }>("SELECT * FROM flows WHERE graph_id = $graphId ORDER BY created_at, rowid");
+  const flowById = db.query<FlowRow, { id: string; graphId: string }>("SELECT * FROM flows WHERE id = $id AND graph_id = $graphId");
+
   const view = (graphId: string): GraphView => {
     const graph = requireGraph(graphId);
     const nodes = db
@@ -500,7 +529,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       )
       .all({ graphId })
       .map((row) => ({ ...toEdge(row), route: row.route == null ? null : (JSON.parse(row.route) as Position[]) }));
-    return { graph, nodes, edges };
+    return { graph, nodes, edges, flows: flowsOf.all({ graphId }).map(toFlow) };
   };
 
   const latestVersion = db.query<VersionRow & { snapshot: string }, { graphId: string }>(
@@ -518,6 +547,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
         ...snapshot,
         nodes: snapshot.nodes.map((node) => ({ ...NODE_DESIGN_DEFAULTS, ...node })),
         edges: snapshot.edges.map((edge) => ({ ...EDGE_DESIGN_DEFAULTS, ...edge, route: edge.route ?? null })),
+        flows: snapshot.flows ?? [],
       },
     };
   };
@@ -730,6 +760,73 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     return view(graphId);
   });
 
+  const requireFlow = (graphId: string, flowId: string) => {
+    const row = flowById.get({ id: flowId, graphId });
+    if (row == null) throw new StoreError("The flow does not exist.", 404);
+    return toFlow(row);
+  };
+
+  // Each step after the first must follow an edge of the graph from the node of the step before. A step without an edge
+  // takes the one edge that connects the two nodes in that direction.
+  const checkSteps = (graphId: string, steps: NonNullable<FlowInput["steps"]>): FlowStep[] => {
+    const { nodes, edges } = view(graphId);
+    const names = new Map(nodes.map(({ id, name }) => [id, name]));
+    const goesFrom = (edge: GraphEdge, from: string, to: string) =>
+      (edge.source === from && edge.target === to) || (!edge.directed && edge.source === to && edge.target === from);
+    return steps.map(({ nodeId, edgeId }, index): FlowStep => {
+      const name = names.get(nodeId);
+      if (name == null) throw new StoreError(`Step ${index + 1}: the node ${nodeId} is not in the graph.`, 400);
+      const previous = steps[index - 1]?.nodeId;
+      if (previous == null) {
+        if (edgeId != null) throw new StoreError("Step 1: the first step has no edge.", 400);
+        return { nodeId, edgeId: null };
+      }
+      const route = `${names.get(previous)} to ${name}`;
+      if (edgeId != null) {
+        const edge = edges.find(({ id }) => id === edgeId);
+        if (edge == null) throw new StoreError(`Step ${index + 1}: the edge ${edgeId} is not in the graph.`, 400);
+        if (!goesFrom(edge, previous, nodeId)) throw new StoreError(`Step ${index + 1}: the edge ${edgeId} does not go from ${route}.`, 400);
+        return { nodeId, edgeId };
+      }
+      const found = edges.filter((edge) => goesFrom(edge, previous, nodeId));
+      if (found.length === 0) throw new StoreError(`Step ${index + 1}: no edge goes from ${route}.`, 400);
+      if (found.length > 1) throw new StoreError(`Step ${index + 1}: more than one edge goes from ${route}. Give the edgeId.`, 400);
+      return { nodeId, edgeId: found[0]?.id ?? null };
+    });
+  };
+
+  const createFlow = (graphId: string, input: FlowInput) => {
+    requireGraph(graphId);
+    const id = crypto.randomUUID();
+    const stamp = now();
+    db.query(
+      `INSERT INTO flows (id, graph_id, name, description, steps, created_at, updated_at)
+       VALUES ($id, $graphId, $name, $description, $steps, $stamp, $stamp)`,
+    ).run({
+      id,
+      graphId,
+      name: input.name.trim(),
+      description: input.description?.trim() ?? "",
+      steps: JSON.stringify(checkSteps(graphId, input.steps ?? [])),
+      stamp,
+    });
+    touchGraph(graphId);
+    return requireFlow(graphId, id);
+  };
+
+  const updateFlow = (graphId: string, flowId: string, input: Partial<FlowInput>) => {
+    const flow = requireFlow(graphId, flowId);
+    db.query("UPDATE flows SET name = $name, description = $description, steps = $steps, updated_at = $now WHERE id = $id").run({
+      id: flowId,
+      name: input.name?.trim() ?? flow.name,
+      description: input.description?.trim() ?? flow.description,
+      steps: JSON.stringify(input.steps != null ? checkSteps(graphId, input.steps) : flow.steps),
+      now: now(),
+    });
+    touchGraph(graphId);
+    return requireFlow(graphId, flowId);
+  };
+
   const diffProposal = (graphId: string, proposalId: string, against: number | "latest" | "draft") => {
     const proposal = toProposal(requireProposal(graphId, proposalId));
     if (against === "draft") return { against, diff: diffGraphs(toContent(view(graphId)), proposal.content) };
@@ -871,6 +968,19 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       detachEdge(graphId, edgeId);
       touchGraph(graphId);
     }),
+
+    listFlows: (graphId: string) => {
+      requireGraph(graphId);
+      return flowsOf.all({ graphId }).map(toFlow);
+    },
+    getFlow: requireFlow,
+    createFlow,
+    updateFlow,
+    deleteFlow: (graphId: string, flowId: string) => {
+      requireFlow(graphId, flowId);
+      db.query("DELETE FROM flows WHERE id = $id").run({ id: flowId });
+      touchGraph(graphId);
+    },
 
     listProposals: (graphId: string) => {
       requireGraph(graphId);

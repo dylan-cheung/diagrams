@@ -127,11 +127,36 @@ describe("API docs", () => {
       "/api/graphs/{id}/proposals/{proposalId}/discard",
       "/api/graphs/{id}/versions",
       "/api/graphs/{id}/versions/{version}",
+      "/api/graphs/{id}/versions/{version}/diagram",
       "/api/nodes",
       "/api/nodes/{id}",
       "/api/vocabulary",
     ]);
-    expect(Object.keys(spec.components.schemas)).toEqual(expect.arrayContaining(["Node", "Edge", "Graph", "GraphView", "Error"]));
+    expect(Object.keys(spec.components.schemas)).toEqual(
+      expect.arrayContaining(["Node", "Edge", "Graph", "GraphView", "Diagram", "DiagramNode", "DiagramEdge", "Error"]),
+    );
+  });
+
+  test("returns the diagram contract of a published version", async () => {
+    const graph = (await send("POST", "/api/graphs", { name: "contract", description: "The minimum contract." })).body;
+    const ask = (await send("POST", `/api/graphs/${graph.id}/nodes`, { name: "Ask", type: "decision", intent: "Pick a path.", properties: { prompt: "yes or no?" } })).body;
+    const done = (await send("POST", `/api/graphs/${graph.id}/nodes`, { name: "Done" })).body;
+    const yes = (await send("POST", `/api/graphs/${graph.id}/edges`, { source: ask.id, target: done.id, label: "yes", type: "calls" })).body;
+    expect((await send("GET", `/api/graphs/${graph.id}/versions/latest/diagram`)).status).toBe(404);
+
+    const { version, hash } = (await send("POST", `/api/graphs/${graph.id}/versions`)).body;
+    expect((await send("GET", `/api/graphs/${graph.id}/versions/latest/diagram`)).body).toEqual({
+      id: graph.id,
+      name: "contract",
+      description: "The minimum contract.",
+      version,
+      hash,
+      nodes: expect.arrayContaining([
+        { id: ask.id, name: "Ask", type: "decision", properties: { prompt: "yes or no?" } },
+        { id: done.id, name: "Done", type: null, properties: {} },
+      ]),
+      edges: [{ id: yes.id, source: ask.id, target: done.id, directed: true, label: "yes", properties: {} }],
+    });
   });
 
   test("serves the docs page", async () => {

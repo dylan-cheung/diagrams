@@ -39,6 +39,20 @@ Apps that run a graph, for example a voice app that walks a decision tree, must 
 - `GET /api/graphs/{id}/versions/{version}` returns one version. Use `latest` for the newest.
 - `hash` is a SHA-256 of the graph content (name, description, nodes and edges, without positions and timestamps).
 
+### Diagram contract
+
+`GET /api/graphs/{id}/versions/{version}/diagram` returns a published version with only the fields a program needs to run it. Other apps (for example Dispatch) read graphs through this route. The `Diagram` schema in `/openapi.json` defines it.
+
+| Part | Fields |
+|---|---|
+| Diagram | `id`, `name`, `description`, `version`, `hash`, `nodes[]`, `edges[]` |
+| Node (`DiagramNode`) | `id`, `name`, `type`, `properties{}` |
+| Edge (`DiagramEdge`) | `id`, `source`, `target`, `directed`, `label`, `properties{}` |
+
+- `Node` and `Edge` extend `DiagramNode` and `DiagramEdge`, so every node and edge in the API has the contract fields.
+- A later API version can add fields. Existing fields keep their names and meanings.
+- Put app-specific configuration (for example a prompt or a model) in `properties`, and the kind of step in `type`.
+
 ### Proposals
 
 A proposal is a changed copy of a graph that you review before it changes the graph. Claude (or any API client) makes one; you compare it with a published version and then apply or discard it.

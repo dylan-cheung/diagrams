@@ -4,6 +4,7 @@ import { StoreError, type GraphStore } from "./db.ts";
 import {
   ApplyInput,
   ApplyResult,
+  Diagram,
   DraftState,
   Edge,
   EdgeInput,
@@ -70,6 +71,16 @@ const route = <const T extends Parameters<typeof createRoute>[0]>(config: T) =>
   createRoute({ ...config, responses: { ...errors, ...config.responses } });
 
 const tag = { vocabulary: ["Vocabulary"], nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], proposals: ["Proposals"] };
+
+const toDiagram = ({ graphId, version, hash, view }: GraphVersion): Diagram => ({
+  id: graphId,
+  name: view.graph.name,
+  description: view.graph.description,
+  version,
+  hash,
+  nodes: view.nodes.map(({ id, name, type, properties }) => ({ id, name, type, properties })),
+  edges: view.edges.map(({ id, source, target, directed, label, properties }) => ({ id, source, target, directed, label, properties })),
+});
 
 export const createApi = (store: GraphStore) => {
   const app = new OpenAPIHono({
@@ -396,6 +407,22 @@ export const createApi = (store: GraphStore) => {
     .openapi(
       route({
         method: "get",
+        path: "/api/graphs/{id}/versions/{version}/diagram",
+        tags: tag.versions,
+        summary: "Get the diagram contract of a published version",
+        description:
+          "Returns only the fields a program needs to run the graph: the nodes with their type and properties, and the edges with their direction, label and properties. Use latest for the newest version. Other apps read graphs through this route.",
+        request: { params: GraphVersionParams },
+        responses: { 200: json(Diagram, "The published version in the diagram contract.") },
+      }),
+      (c) => {
+        const { id, version } = c.req.valid("param");
+        return c.json(toDiagram(store.getVersion(id, version)), 200);
+      },
+    )
+    .openapi(
+      route({
+        method: "get",
         path: "/api/graphs/{id}/proposals",
         tags: tag.proposals,
         summary: "List the proposals for a graph",
@@ -498,9 +525,9 @@ export const createApi = (store: GraphStore) => {
     openapi: "3.1.0",
     info: {
       title: "Diagram API",
-      version: "4.2.0",
+      version: "4.3.0",
       description:
-        "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A published version is a copy of a graph that does not change. A proposal is a proposed graph that you compare with a version before you apply it. The Guide page of the app (/guide) explains each part.",
+        "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A published version is a copy of a graph that does not change. A proposal is a proposed graph that you compare with a version before you apply it. The Diagram schema is the minimum contract of a published graph for other apps. The Guide page of the app (/guide) explains each part.",
     },
   });
   app.get("/docs", Scalar({ url: "/openapi.json", pageTitle: "Diagram API", showDeveloperTools: "never" }));

@@ -54,37 +54,43 @@ const Metadata = Properties.openapi({ description: "Extensible metadata. Keys ar
 
 export const Position = z.object({ x: z.number(), y: z.number() }).openapi("Position", { example: { x: 40, y: 120 } });
 
-export const Node = z
+export const DiagramNode = z
   .object({
     id: Id,
     name: z.string().openapi({ example: "Ada" }),
-    description: z.string().openapi({ example: "Leads the payments team." }),
     type: NodeType,
-    intent: Intent,
-    status: Status,
-    labels: Labels,
     properties: Metadata,
-    createdAt: Timestamp,
-    updatedAt: Timestamp,
   })
-  .openapi("Node");
+  .openapi("DiagramNode", { description: "The minimum a program reads from a node. Every node in the API has these fields." });
 
-export const Edge = z
+export const DiagramEdge = z
   .object({
     id: Id,
     source: Id,
     target: Id,
     directed: z.boolean(),
-    type: RelationshipType,
-    label: z.string().openapi({ example: "knows" }),
-    description: z.string(),
-    intent: Intent,
-    status: Status,
+    label: z.string().openapi({ description: "The edge label. Use it, for example, to name the answer that takes the edge out of a decision.", example: "yes" }),
     properties: Metadata,
-    createdAt: Timestamp,
-    updatedAt: Timestamp,
   })
-  .openapi("Edge");
+  .openapi("DiagramEdge", { description: "The minimum a program reads from an edge. Every edge in the API has these fields." });
+
+export const Node = DiagramNode.extend({
+  description: z.string().openapi({ example: "Leads the payments team." }),
+  intent: Intent,
+  status: Status,
+  labels: Labels,
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+}).openapi("Node");
+
+export const Edge = DiagramEdge.extend({
+  type: RelationshipType,
+  description: z.string(),
+  intent: Intent,
+  status: Status,
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+}).openapi("Edge");
 
 export const LayoutDirection = z
   .enum(["horizontal", "vertical"])
@@ -138,6 +144,21 @@ export const GraphVersionSummary = z
   .openapi("GraphVersionSummary");
 
 export const GraphVersion = GraphVersionSummary.extend({ view: GraphView }).openapi("GraphVersion");
+
+export const Diagram = z
+  .object({
+    id: Id,
+    name: z.string().openapi({ example: "claim intake" }),
+    description: z.string().openapi({ example: "How a voice app routes a caller with a claim." }),
+    version: z.number().int().openapi({ example: 3 }),
+    hash: z.string().openapi({ description: "The SHA-256 of the graph content. It changes only when the content changes." }),
+    nodes: z.array(DiagramNode),
+    edges: z.array(DiagramEdge),
+  })
+  .openapi("Diagram", {
+    description:
+      "The minimum contract of a published graph: the fields a program needs to run it. New fields can appear in a later API version. Existing fields keep their names and meanings.",
+  });
 
 const Name = (error: string) => z.string().trim().min(1, { error });
 
@@ -357,6 +378,7 @@ export type Properties = z.infer<typeof Properties>;
 export type Position = z.infer<typeof Position>;
 export type Vocabulary = z.infer<typeof Vocabulary>;
 export type Term = Vocabulary["nodeTypes"][number];
+export type Diagram = z.infer<typeof Diagram>;
 export type GraphNode = z.infer<typeof Node>;
 export type GraphEdge = z.infer<typeof Edge>;
 export type Graph = z.infer<typeof Graph>;

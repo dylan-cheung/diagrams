@@ -126,7 +126,7 @@ export const Guide = () => {
                 On the <b>Graphs</b> page, click <b>+</b>. Give the graph a name and a purpose. The purpose says what question the graph answers.
               </li>
               <li>
-                The graph opens with its draft. Each change saves at once. Click <b>Add node</b> for each thing in the graph.
+                The graph opens with its draft. Each change saves at once. Drag a node type from the bar on the left of the canvas for each thing in the graph, or click a type to add it in the middle of the view.
               </li>
               <li>Select a node. In the inspector, set its name, type, status, description and intent.</li>
               <li>Drag from any dot on one node to any dot on another node. This adds an edge. The node where the drag starts is the source. Select the edge and set its type, label and direction.</li>

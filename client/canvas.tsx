@@ -10,6 +10,7 @@ import {
   ReactFlow,
   useInternalNode,
   useNodesState,
+  useReactFlow,
   type Edge,
   type EdgeProps,
   type Node,
@@ -20,6 +21,7 @@ import { assignParallelSlots, edgePath, LABEL_STOPS, labelSize, loopPath, placeL
 import { NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
 import type { ChangeStatus, ContentEdge, GraphContent, Position, Vocabulary } from "../model.ts";
 import { termName } from "../vocabulary.ts";
+import { NODE_TYPE_DRAG, NodePalette } from "./node-palette.tsx";
 import { useVocabulary } from "./vocabulary.ts";
 
 export type Selection = { kind: "node" | "edge"; id: string } | null;
@@ -255,6 +257,7 @@ export const GraphCanvas = ({
   onRemove,
   marks,
   routes,
+  onAddNode,
   readOnly = false,
   children,
 }: {
@@ -266,6 +269,7 @@ export const GraphCanvas = ({
   onRemove?: (nodeIds: string[], edgeIds: string[]) => void;
   marks?: Marks;
   routes?: Map<string, Point[]>;
+  onAddNode?: (type: string | null, position: Position) => void;
   readOnly?: boolean;
   children?: ReactNode;
 }) => {
@@ -273,6 +277,8 @@ export const GraphCanvas = ({
   useEffect(() => setNodes(toFlowNodes(view, selection, marks)), [view, selection, marks, setNodes]);
   const vocabulary = useVocabulary();
   const [hovered, setHovered] = useState<string | null>(null);
+  const { screenToFlowPosition } = useReactFlow();
+  const canAdd = onAddNode != null && !readOnly;
   const edges = useMemo(
     () => toFlowEdges(view, nodes, vocabulary, selection, marks, hovered, setHovered, onSelect, routes),
     [view, nodes, vocabulary, selection, marks, hovered, onSelect, routes],
@@ -289,6 +295,18 @@ export const GraphCanvas = ({
       onNodesChange={onNodesChange}
       nodesDraggable={!readOnly}
       nodesConnectable={!readOnly}
+      onDragOver={(event) => {
+        if (!canAdd || !event.dataTransfer.types.includes(NODE_TYPE_DRAG)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDrop={(event) => {
+        if (!canAdd || !event.dataTransfer.types.includes(NODE_TYPE_DRAG)) return;
+        event.preventDefault();
+        const type = event.dataTransfer.getData(NODE_TYPE_DRAG);
+        const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        onAddNode(type === "" ? null : type, { x: Math.round(at.x - NODE_WIDTH / 2), y: Math.round(at.y - NODE_HEIGHT / 2) });
+      }}
       connectionMode={ConnectionMode.Loose}
       connectionRadius={40}
       onConnect={({ source, target }) => {
@@ -315,6 +333,7 @@ export const GraphCanvas = ({
     >
       <Background gap={20} />
       <Controls showInteractive={false} />
+      {canAdd && <NodePalette onAdd={onAddNode} />}
       {children}
     </ReactFlow>
   );

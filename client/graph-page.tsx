@@ -8,6 +8,7 @@ import { edgeText, GraphCanvas, type Selection } from "./canvas.tsx";
 import { Inspector, type InspectorActions } from "./inspector.tsx";
 import { ProposalReview } from "./review.tsx";
 import { go, Link, type Route } from "./router.tsx";
+import { termName } from "../vocabulary.ts";
 import { useVocabulary } from "./vocabulary.ts";
 import { GraphSections, VersionPanel, type Shown } from "./view-panel.tsx";
 
@@ -149,8 +150,9 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     removeEdgeFromGraph: (id) => void run(() => api.removeEdgeFromGraph(graphId, id)),
   };
 
-  const addNode = async () => {
-    const node = await run(() => api.createNodeInGraph(graphId, { name: "New node" }, null));
+  const addNode = async (type: string | null, position: Position) => {
+    const name = `New ${(termName(vocabulary.nodeTypes, type) ?? "node").toLowerCase()}`;
+    const node = await run(() => api.createNodeInGraph(graphId, { name, type }, position));
     if (node != null) setSelection({ kind: "node", id: node.id });
   };
 
@@ -259,9 +261,6 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
       <header className="toolbar">
         {toolbarStart}
         <span className="spacer" />
-        <button type="button" onClick={() => void addNode()} disabled={draft == null || readOnly}>
-          Add node
-        </button>
         <button type="button" onClick={() => relayout(draft?.graph.direction ?? "horizontal")} disabled={draft == null || readOnly || draft.nodes.length === 0}>
           Auto layout
         </button>
@@ -310,6 +309,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
                 onMove={move}
                 onConnect={(source, target) => void connect(source, target)}
                 onRemove={remove}
+                onAddNode={(type, position) => void addNode(type, position)}
                 readOnly={readOnly}
               >
                 <Panel position="bottom-right" className="direction-panel">

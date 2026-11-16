@@ -593,6 +593,38 @@ button.add {
   background: rgb(0 0 0 / 0.3);
 }
 
+.palette {
+  display: grid;
+  gap: 8px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
+}
+
+.palette-item {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 2px solid var(--type-color, var(--muted));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--type-color, var(--muted)) 14%, var(--panel));
+  color: var(--type-color, var(--muted));
+  cursor: grab;
+}
+
+.palette-item:hover:not(:disabled) {
+  border-color: var(--type-color, var(--ink));
+  background: color-mix(in srgb, var(--type-color, var(--muted)) 26%, var(--panel));
+}
+
+.palette-letter {
+  font-weight: 700;
+}
+
 .direction-panel .tabs {
   background: var(--panel);
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
@@ -666,28 +698,28 @@ button.add {
   font-weight: 600;
 }
 
-.entity.type-service {
+:is(.entity, .palette-item).type-service {
   --type-color: var(--type-service);
 }
 
-.entity.type-module {
+:is(.entity, .palette-item).type-module {
   --type-color: var(--type-module);
 }
 
-.entity.type-database {
+:is(.entity, .palette-item).type-database {
   --type-color: var(--type-database);
 }
 
-.entity.type-external-system {
+:is(.entity, .palette-item).type-external-system {
   --type-color: var(--type-external);
   background: var(--chip);
 }
 
-.entity.type-user-interface {
+:is(.entity, .palette-item).type-user-interface {
   --type-color: var(--type-ui);
 }
 
-.entity.type-decision {
+:is(.entity, .palette-item).type-decision {
   --type-color: var(--type-decision);
 }
 

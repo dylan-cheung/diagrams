@@ -526,13 +526,30 @@ button.add {
   text-decoration: none;
 }
 
+/* Every row is two lines high: the name on one line and the purpose on one line. Long text ends in "…", and the
+   full purpose shows on hover. A graph with no purpose keeps the empty line. */
+.row-name,
+.row-purpose {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60ch;
+}
+
 .row-purpose {
   color: var(--muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  max-width: 60ch;
+  min-height: 1lh;
+}
+
+/* The name column takes the free width, so the "…" also works on a narrow screen. */
+.graph-table td:first-child {
+  width: 100%;
+  max-width: 0;
+}
+
+.graph-table td:not(:first-child) {
+  white-space: nowrap;
 }
 
 .graph-table td.actions {

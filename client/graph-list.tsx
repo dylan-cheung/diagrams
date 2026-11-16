@@ -207,7 +207,9 @@ export const GraphList = () => {
                   <Link className="row-name" to={{ page: "graph", graphId: row.id, mode: "view" }} onClick={(e) => e.stopPropagation()}>
                     {row.name}
                   </Link>
-                  {row.description !== "" && <div className="row-purpose">{row.description}</div>}
+                  <div className="row-purpose" title={row.description}>
+                    {row.description}
+                  </div>
                 </td>
                 <td className="numeric">
                   {row.published == null ? <span className="meta">none</span> : `v${row.published}`}

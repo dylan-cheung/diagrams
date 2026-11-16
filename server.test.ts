@@ -107,7 +107,7 @@ describe("API docs", () => {
   test("the OpenAPI spec lists every route", async () => {
     const spec = (await send("GET", "/openapi.json")).body;
     expect(spec.openapi).toBe("3.1.0");
-    expect(spec.info.title).toBe("graphs API");
+    expect(spec.info.title).toBe("Diagram API");
     expect(Object.keys(spec.paths).sort()).toEqual([
       "/api/edges",
       "/api/edges/{id}",

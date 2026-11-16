@@ -466,13 +466,13 @@ export const createApi = (store: GraphStore) => {
   app.doc31("/openapi.json", {
     openapi: "3.1.0",
     info: {
-      title: "graphs API",
+      title: "Diagram API",
       version: "4.2.0",
       description:
-        "A labeled property graph. Nodes and edges are shared entities; a graph is a named subgraph that holds nodes, their positions, and edges. A published version is a copy of a graph that does not change. A proposal is a proposed graph that you compare with a version before you apply it.",
+        "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A published version is a copy of a graph that does not change. A proposal is a proposed graph that you compare with a version before you apply it. The Guide page of the app (/guide) explains each part.",
     },
   });
-  app.get("/docs", Scalar({ url: "/openapi.json", pageTitle: "graphs API", showDeveloperTools: "never" }));
+  app.get("/docs", Scalar({ url: "/openapi.json", pageTitle: "Diagram API", showDeveloperTools: "never" }));
 
   return routes;
 };

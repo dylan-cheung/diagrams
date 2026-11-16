@@ -36,6 +36,6 @@ export const createServer = (store: GraphStore, port = PORT) => {
 
 if (import.meta.main) {
   const server = createServer(openGraphStore(DB_PATH, loadVocabulary(process.env.VOCABULARY)));
-  console.log(`Graph app on ${server.url} (API docs at ${new URL("/docs", server.url)}, database ${DB_PATH})`);
+  console.log(`Diagram on ${server.url} (API docs at ${new URL("/docs", server.url)}, database ${DB_PATH})`);
   if (process.env.OPEN_BROWSER !== "0") Bun.spawn(["open", server.url.href]);
 }

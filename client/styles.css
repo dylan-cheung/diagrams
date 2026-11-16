@@ -495,6 +495,40 @@ ul.errors {
   max-width: 60ch;
 }
 
+.graph-table td.actions {
+  width: 1%;
+  padding: 4px 8px;
+  vertical-align: middle;
+}
+
+.row-actions {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 2;
+  display: grid;
+  min-width: 140px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
+}
+
+.menu button {
+  border: 0;
+  text-align: left;
+  border-radius: 6px;
+}
+
+.menu button:hover:not(:disabled) {
+  background: var(--chip);
+}
+
 .dialog {
   width: min(420px, calc(100vw - 32px));
   padding: 0;
@@ -1118,8 +1152,10 @@ ul.errors {
     border-top: 1px solid var(--line);
   }
 
-  .graph-table th:nth-child(n + 4),
-  .graph-table td:nth-child(n + 4) {
+  .graph-table th:nth-child(4),
+  .graph-table td:nth-child(4),
+  .graph-table th:nth-child(5),
+  .graph-table td:nth-child(5) {
     display: none;
   }
 }

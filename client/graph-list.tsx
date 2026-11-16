@@ -81,6 +81,50 @@ const NewGraphDialog = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
+const RowActions = ({ graph, onDeleted, onError }: { graph: GraphSummary; onDeleted: () => void; onError: (errors: string[]) => void }) => {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: Event) => {
+      if (event instanceof KeyboardEvent ? event.key === "Escape" : !root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  const remove = async () => {
+    setOpen(false);
+    if (!confirm(`Delete the graph "${graph.name}"? Its nodes and edges are deleted too.`)) return;
+    try {
+      await api.deleteGraph(graph.id);
+      onDeleted();
+    } catch (error) {
+      onError(error instanceof ApiError ? error.errors : [(error as Error).message]);
+    }
+  };
+
+  return (
+    <div className="row-actions" ref={root} onClick={(event) => event.stopPropagation()}>
+      <button type="button" className="icon" aria-label={`Actions for ${graph.name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+        …
+      </button>
+      {open && (
+        <div className="menu" role="menu">
+          <button type="button" role="menuitem" className="danger" onClick={() => void remove()}>
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const GraphList = () => {
   const [graphs, setGraphs] = useState<GraphSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -155,6 +199,7 @@ export const GraphList = () => {
                   </button>
                 </th>
               ))}
+              <th aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
@@ -180,6 +225,9 @@ export const GraphList = () => {
                 </td>
                 <td className="numeric">{row.openProposals === 0 ? <span className="meta">0</span> : <span className="pill open">{row.openProposals} open</span>}</td>
                 <td className="meta">{localTime(row.updatedAt)}</td>
+                <td className="actions">
+                  <RowActions graph={row} onDeleted={() => void refresh()} onError={setErrors} />
+                </td>
               </tr>
             ))}
           </tbody>

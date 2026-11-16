@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { ContentEdge, ContentNode, GraphContent, GraphVersionSummary, Properties, ProposalSummary } from "../model.ts";
 import { termName } from "../vocabulary.ts";
 import type { Selection } from "./canvas.tsx";
@@ -91,26 +92,78 @@ const EdgeView = ({ edge, content }: { edge: ContentEdge; content: GraphContent 
   );
 };
 
-export const ViewPanel = ({
+// The proposals and the versions of the graph. The panel shows them when nothing is selected.
+export const GraphSections = ({
   graphId,
-  content,
   shown,
   published,
   versions,
   proposals,
-  selection,
-  onSelect,
   onShow,
 }: {
   graphId: string;
-  content: GraphContent;
   shown: Shown;
   published: number | null;
   versions: GraphVersionSummary[];
   proposals: ProposalSummary[];
+  onShow: (shown: Shown) => void;
+}) => (
+  <>
+    <section className="section">
+      <h2>Proposals</h2>
+      <p className="hint">A proposal is a changed copy of the graph, for example from Claude. Review it before you apply it.</p>
+      {proposals.length === 0 ? (
+        <p className="meta">No proposals.</p>
+      ) : (
+        <ul className="versions">
+          {proposals.map((proposal) => (
+            <li key={proposal.id}>
+              <Link className="row-name" to={{ page: "proposal", graphId, proposalId: proposal.id }}>
+                {proposal.title}
+              </Link>
+              <span className={`pill ${proposal.status}`}>{proposal.status}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+    <section className="section">
+      <h2>Versions</h2>
+      <p className="hint">Apps run a published version. Click a version to look at it. Only the draft can change.</p>
+      <ul className="versions">
+        <li>
+          <button type="button" className={`link${shown === "draft" ? " current" : ""}`} onClick={() => onShow("draft")}>
+            Draft
+          </button>
+          <span className="meta">saves each change</span>
+        </li>
+        {versions.map((version) => (
+          <li key={version.version}>
+            <button type="button" className={`link${shown === version.version ? " current" : ""}`} onClick={() => onShow(version.version)}>
+              Version {version.version}
+              {version.version === published && " (latest)"}
+            </button>
+            <span className="meta">{localTime(version.publishedAt)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  </>
+);
+
+// The read-only panel for a published version.
+export const VersionPanel = ({
+  graphId,
+  content,
+  selection,
+  onSelect,
+  children,
+}: {
+  graphId: string;
+  content: GraphContent;
   selection: Selection;
   onSelect: (selection: Selection) => void;
-  onShow: (shown: Shown) => void;
+  children: ReactNode;
 }) => {
   const node = selection?.kind === "node" ? content.nodes.find(({ id }) => id === selection.id) : undefined;
   const edge = selection?.kind === "edge" ? content.edges.find(({ id }) => id === selection.id) : undefined;
@@ -123,49 +176,11 @@ export const ViewPanel = ({
         <p className="endpoints">{content.graph.name}</p>
         {content.graph.description !== "" && <p className="hint">{content.graph.description}</p>}
         <p className="hint">
-          {content.nodes.length} nodes and {content.edges.length} edges. Select a node or an edge to see it. Click <b>Edit</b> to change the draft.
+          {content.nodes.length} nodes and {content.edges.length} edges. Select a node or an edge to see it.
         </p>
         <p className="mono">{graphId}</p>
       </section>
-      <section className="section">
-        <h2>Proposals</h2>
-        <p className="hint">A proposal is a changed copy of the graph, for example from Claude. Review it before you apply it.</p>
-        {proposals.length === 0 ? (
-          <p className="meta">No proposals.</p>
-        ) : (
-          <ul className="versions">
-            {proposals.map((proposal) => (
-              <li key={proposal.id}>
-                <Link className="row-name" to={{ page: "proposal", graphId, proposalId: proposal.id }}>
-                  {proposal.title}
-                </Link>
-                <span className={`pill ${proposal.status}`}>{proposal.status}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      <section className="section">
-        <h2>Versions</h2>
-        <p className="hint">Apps run a published version. Click a version to show it.</p>
-        <ul className="versions">
-          <li>
-            <button type="button" className={`link${shown === "draft" ? " current" : ""}`} onClick={() => onShow("draft")}>
-              Draft
-            </button>
-            <span className="meta">{published == null ? "not published" : "the editor changes it"}</span>
-          </li>
-          {versions.map((version) => (
-            <li key={version.version}>
-              <button type="button" className={`link${shown === version.version ? " current" : ""}`} onClick={() => onShow(version.version)}>
-                Version {version.version}
-                {version.version === published && " (latest)"}
-              </button>
-              <span className="meta">{localTime(version.publishedAt)}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {children}
     </>
   );
 };

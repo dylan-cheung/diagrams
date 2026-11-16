@@ -36,7 +36,7 @@ const NewGraphDialog = ({ onClose }: { onClose: () => void }) => {
     event.preventDefault();
     try {
       const graph = await api.createGraph({ name, description });
-      go({ page: "graph", graphId: graph.id, mode: "edit" });
+      go({ page: "graph", graphId: graph.id });
     } catch (error) {
       if (error instanceof ApiError) setErrors(error.errors);
       else throw error;
@@ -203,10 +203,10 @@ export const GraphList = () => {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id} onClick={() => go({ page: "graph", graphId: row.id, mode: "view" })}>
+              <tr key={row.id} onClick={() => go({ page: "graph", graphId: row.id })}>
                 <td>
                   <div className="row-title">
-                    <Link className="row-name" to={{ page: "graph", graphId: row.id, mode: "view" }} onClick={(e) => e.stopPropagation()}>
+                    <Link className="row-name" to={{ page: "graph", graphId: row.id }} onClick={(e) => e.stopPropagation()}>
                       {row.name}
                     </Link>
                     {row.id === WALKTHROUGH_ID && <span className="pill walkthrough">walkthrough</span>}

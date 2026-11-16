@@ -118,7 +118,7 @@ export const Guide = () => {
 
           <Section id="walkthrough" title="Walkthrough">
             <p>
-              Open the <Link to={{ page: "graph", graphId: WALKTHROUGH_ID, mode: "view" }}>walkthrough graph</Link> to see each part of this guide in one
+              Open the <Link to={{ page: "graph", graphId: WALKTHROUGH_ID }}>walkthrough graph</Link> to see each part of this guide in one
               realistic example. Select a node or an edge to read its description and intent. To make your own graph:
             </p>
             <ol>
@@ -126,7 +126,7 @@ export const Guide = () => {
                 On the <b>Graphs</b> page, click <b>+</b>. Give the graph a name and a purpose. The purpose says what question the graph answers.
               </li>
               <li>
-                The graph opens in <b>Edit</b> mode. Click <b>Add node</b> for each thing in the graph.
+                The graph opens with its draft. Each change saves at once. Click <b>Add node</b> for each thing in the graph.
               </li>
               <li>Select a node. In the inspector, set its name, type, status, description and intent.</li>
               <li>Drag from any dot on one node to any dot on another node. This adds an edge. The node where the drag starts is the source. Select the edge and set its type, label and direction.</li>
@@ -137,7 +137,7 @@ export const Guide = () => {
                 Click <b>Publish</b>. This saves a version that does not change. Apps that run the graph use a published version.
               </li>
               <li>
-                Later, a person or Claude can send a <b>proposal</b>. Review it in <b>View</b> mode, then apply or discard it.
+                Later, a person or Claude can send a <b>proposal</b>. Open it from <b>Proposals</b> in the panel, then apply or discard it.
               </li>
             </ol>
           </Section>
@@ -345,7 +345,7 @@ export const Guide = () => {
               <li>A copy is necessary because nodes are shared: an edit for one graph can change other graphs.</li>
               <li>When nothing changed since the latest version, Publish returns that version. A change to positions only is not a change.</li>
               <li>
-                In <b>View</b> mode, pick a version to show it. The graph list shows a <span className="pill draft">draft</span> mark when the draft has changes
+                Pick a version in the version list to look at it. A version is read-only. The graph list shows a <span className="pill draft">draft</span> mark when the draft has changes
                 that are not published.
               </li>
             </ul>
@@ -356,7 +356,7 @@ export const Guide = () => {
             <ol>
               <li>The client reads the graph and sends the full proposed graph, with a title, a rationale and a work item.</li>
               <li>
-                In <b>View</b> mode, open the proposal from <b>Proposals</b>.
+                Open the proposal from <b>Proposals</b> in the panel.
               </li>
               <li>
                 The <b>Ledger</b> tab lists each added, removed and changed node and edge. The <b>Graph</b> tab shows both graphs on one canvas in color.

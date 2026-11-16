@@ -6,7 +6,6 @@ import {
   EdgeLabelRenderer,
   Handle,
   MarkerType,
-  MiniMap,
   Position as HandlePosition,
   ReactFlow,
   useInternalNode,
@@ -316,7 +315,6 @@ export const GraphCanvas = ({
     >
       <Background gap={20} />
       <Controls showInteractive={false} />
-      <MiniMap pannable zoomable style={{ width: 140, height: 100 }} />
       {children}
     </ReactFlow>
   );

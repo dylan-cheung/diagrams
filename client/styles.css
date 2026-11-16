@@ -593,6 +593,11 @@ button.add {
   background: rgb(0 0 0 / 0.3);
 }
 
+.direction-panel .tabs {
+  background: var(--panel);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
+}
+
 .save-status {
   font-size: 12px;
   color: var(--muted);
@@ -614,7 +619,6 @@ button.add {
   --xy-background-color: var(--bg);
   --xy-edge-stroke: var(--edge);
   --xy-edge-stroke-selected: var(--accent);
-  --xy-minimap-background-color: var(--panel);
   --xy-controls-button-background-color: var(--panel);
   --xy-controls-button-color: var(--ink);
 }
@@ -779,10 +783,6 @@ button.add {
 .edge-label.selected {
   border-color: var(--accent);
   color: var(--accent);
-}
-
-.react-flow__minimap {
-  background: var(--panel);
 }
 
 .review {

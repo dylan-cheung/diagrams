@@ -88,7 +88,7 @@ The app opens at http://127.0.0.1:4848.
 - Press Delete or Backspace to remove the selection from the graph.
 - **Auto layout** places all nodes with ELK (the layered algorithm of `elkjs`, which runs in the page). ELK keeps edge crossings few and routes each edge around the nodes with right-angle bends. The positions and the edge routes are saved for each graph (`PUT /api/graphs/{id}/layout`). When you drag a node, the routes of its edges are removed, and those edges show as direct lines until the next **Auto layout**. New nodes without a position are placed below the others.
 - The walkthrough graph starts with the layout in `walkthrough-layout.json`. Run `bun walkthrough-layout.ts` to make that file again after a change to `walkthrough.ts` or to the layout options in `layout.ts`.
-- **Horizontal** and **Vertical** set the layout direction of the graph and place all nodes again in that direction. Each graph keeps its direction, and **Auto layout** uses it. The direction is not a change to publish (`direction` on `PATCH /api/graphs/{id}`).
+- **Horizontal** and **Vertical** (at the bottom right of the canvas) set the layout direction of the graph and place all nodes again in that direction. Each graph keeps its direction, and **Auto layout** uses it. The direction is not a change to publish (`direction` on `PATCH /api/graphs/{id}`).
 
 ## API
 

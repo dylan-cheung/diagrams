@@ -259,20 +259,6 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
       <header className="toolbar">
         {toolbarStart}
         <span className="spacer" />
-        <div className="tabs" role="group" aria-label="Layout direction">
-          {DIRECTIONS.map((item) => (
-            <button
-              key={item.direction}
-              type="button"
-              className={draft?.graph.direction === item.direction ? "active" : ""}
-              aria-pressed={draft?.graph.direction === item.direction}
-              onClick={() => relayout(item.direction)}
-              disabled={draft == null || readOnly}
-            >
-              {item.name}
-            </button>
-          ))}
-        </div>
         <button type="button" onClick={() => void addNode()} disabled={draft == null || readOnly}>
           Add node
         </button>
@@ -326,6 +312,22 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
                 onRemove={remove}
                 readOnly={readOnly}
               >
+                <Panel position="bottom-right" className="direction-panel">
+                  <div className="tabs" role="group" aria-label="Layout direction">
+                    {DIRECTIONS.map((item) => (
+                      <button
+                        key={item.direction}
+                        type="button"
+                        className={draft?.graph.direction === item.direction ? "active" : ""}
+                        aria-pressed={draft?.graph.direction === item.direction}
+                        onClick={() => relayout(item.direction)}
+                        disabled={draft == null || readOnly}
+                      >
+                        {item.name}
+                      </button>
+                    ))}
+                  </div>
+                </Panel>
                 {!readOnly && status !== "" && (
                   <Panel position="top-right" className={`floating-note save-status${saving === 0 && summary?.changed === true ? " changed" : ""}`}>
                     <span aria-live="polite">{status}</span>

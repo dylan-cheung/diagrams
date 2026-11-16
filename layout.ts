@@ -1,43 +1,90 @@
-import dagre from "@dagrejs/dagre";
-import { LABEL_HEIGHT, labelSize } from "./geometry.ts";
+import ELK, { type ElkExtendedEdge, type ElkNode } from "elkjs/lib/elk.bundled.js";
+import { LABEL_HEIGHT, labelSize, type Point } from "./geometry.ts";
 import type { ContentEdge, ContentNode, LayoutDirection, Position } from "./model.ts";
 
 export const NODE_WIDTH = 180;
 export const NODE_HEIGHT = 56;
 
-export const autoLayout = <E extends Pick<ContentEdge, "id" | "source" | "target">>(
+// A node with a type, a name and a status line is 63 px high. The layout uses this height, so routes and labels do not
+// touch the bottom of such a node.
+const LAYOUT_NODE_HEIGHT = 64;
+
+export type Layout = { positions: Record<string, Position>; routes: Record<string, Point[]> };
+
+// In the browser, the bundled build runs ELK in the page. A layout of a graph with tens of nodes takes a few
+// milliseconds. Outside a browser (Bun tests and scripts), the bundled build cannot start its fake worker, so ELK runs in
+// a Bun worker that does not keep the process alive. ELK starts at the first layout, so the server never loads it.
+let instance: InstanceType<typeof ELK> | null = null;
+const elk = () => {
+  instance ??=
+    typeof document !== "undefined"
+      ? new ELK()
+      : new ELK({
+          workerFactory: () => {
+            const worker = new Worker(import.meta.resolve("elkjs/lib/elk-worker.min.js"));
+            (worker as Worker & { unref: () => void }).unref();
+            return worker;
+          },
+        });
+  return instance;
+};
+
+// ELK's layered algorithm places the nodes in layers with few edge crossings, and routes each edge around the nodes
+// with right-angle bends. Each edge label has its size, so ELK leaves room for it.
+const options = (direction: LayoutDirection) => ({
+  "elk.algorithm": "layered",
+  "elk.direction": direction === "vertical" ? "DOWN" : "RIGHT",
+  "elk.edgeRouting": "ORTHOGONAL",
+  "elk.spacing.nodeNode": "50",
+  "elk.layered.spacing.nodeNodeBetweenLayers": "60",
+  "elk.layered.spacing.edgeNodeBetweenLayers": "24",
+  "elk.spacing.edgeEdge": "16",
+  "elk.layered.spacing.edgeEdgeBetweenLayers": "16",
+  "elk.spacing.edgeLabel": "4",
+  // In a cycle, the edge that goes against the order of the nodes in the graph is the one that points back. So the nodes
+  // made first, which usually start the flow, stay at the top.
+  "elk.layered.cycleBreaking.strategy": "GREEDY_MODEL_ORDER",
+  "elk.layered.crossingMinimization.thoroughness": "30",
+  "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+  "elk.padding": "[top=20,left=20,bottom=20,right=20]",
+});
+
+// Places every node and routes every edge. With onlyUnplaced, it returns positions only for the nodes that have no
+// position, below the placed nodes, and no routes, so the placed nodes and their routes stay as they are.
+export const autoLayout = async <E extends Pick<ContentEdge, "id" | "source" | "target">>(
   nodes: Pick<ContentNode, "id" | "position">[],
   edges: E[],
   onlyUnplaced: boolean,
   direction: LayoutDirection,
   labelOf: (edge: E) => string = () => "",
-) => {
-  const g = new dagre.graphlib.Graph({ multigraph: true });
-  g.setGraph({ rankdir: direction === "vertical" ? "TB" : "LR", nodesep: 50, ranksep: direction === "vertical" ? 80 : 110, marginx: 20, marginy: 20 });
-  g.setDefaultEdgeLabel(() => ({}));
-  for (const node of nodes) g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
-  // One dagre edge for each pair of connected nodes. Its label is the stack of all label texts between the pair, so the
-  // layout leaves room for the stack between the two nodes.
-  const pairs = new Map<string, { source: string; target: string; width: number; count: number }>();
-  for (const edge of edges) {
-    if (edge.source === edge.target) continue;
-    const key = [edge.source, edge.target].sort().join("|");
-    const pair = pairs.get(key) ?? { source: edge.source, target: edge.target, width: 0, count: 0 };
-    const text = labelOf(edge);
-    if (text !== "") pairs.set(key, { ...pair, width: Math.max(pair.width, labelSize(text).width), count: pair.count + 1 });
-    else pairs.set(key, pair);
-  }
-  for (const [key, { source, target, width, count }] of pairs) {
-    g.setEdge(source, target, { width, height: count === 0 ? 0 : count * (LABEL_HEIGHT + 4) + 8, labelpos: "c" }, key);
-  }
-  dagre.layout(g);
+): Promise<Layout> => {
+  const graph: ElkNode = {
+    id: "root",
+    layoutOptions: options(direction),
+    children: nodes.map(({ id }) => ({ id, width: NODE_WIDTH, height: LAYOUT_NODE_HEIGHT })),
+    edges: edges.map((edge): ElkExtendedEdge => {
+      const text = labelOf(edge);
+      return { id: edge.id, sources: [edge.source], targets: [edge.target], labels: text === "" ? [] : [{ text, ...labelSize(text), height: LABEL_HEIGHT }] };
+    }),
+  };
+  const result = await elk().layout(graph);
+
   const placed = nodes.filter(({ position }) => position != null);
-  const shiftY = onlyUnplaced && placed.length > 0 ? Math.max(...placed.map(({ position }) => (position as Position).y)) + NODE_HEIGHT + 60 : 0;
+  const shiftY = onlyUnplaced && placed.length > 0 ? Math.max(...placed.map(({ position }) => (position as Position).y)) + LAYOUT_NODE_HEIGHT + 60 : 0;
+  const unplaced = new Set(nodes.filter(({ position }) => position == null).map(({ id }) => id));
   const positions: Record<string, Position> = {};
-  for (const node of nodes) {
-    if (onlyUnplaced && node.position != null) continue;
-    const { x, y } = g.node(node.id);
-    positions[node.id] = { x: Math.round(x - NODE_WIDTH / 2), y: Math.round(y - NODE_HEIGHT / 2 + shiftY) };
+  for (const child of result.children ?? []) {
+    if (onlyUnplaced && !unplaced.has(child.id)) continue;
+    positions[child.id] = { x: Math.round(child.x ?? 0), y: Math.round((child.y ?? 0) + shiftY) };
   }
-  return positions;
+
+  const routes: Record<string, Point[]> = {};
+  if (!onlyUnplaced) {
+    for (const edge of result.edges ?? []) {
+      const section = edge.sections?.[0];
+      if (section == null) continue;
+      routes[edge.id] = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint].map(({ x, y }) => ({ x: Math.round(x), y: Math.round(y) }));
+    }
+  }
+  return { positions, routes };
 };

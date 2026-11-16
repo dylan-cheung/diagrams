@@ -17,7 +17,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { assignParallelSlots, edgePath, LABEL_STOPS, labelSize, loopPath, placeLabels, type Box, type Label, type ParallelSlot, type Point } from "../geometry.ts";
+import { assignParallelSlots, edgePath, LABEL_STOPS, labelSize, loopPath, placeLabels, pointAlong, routePath, snapRoute, type Box, type Label, type ParallelSlot, type Point } from "../geometry.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
 import type { ChangeStatus, ContentEdge, GraphContent, Position, Vocabulary } from "../model.ts";
 import { termName } from "../vocabulary.ts";
@@ -36,6 +36,7 @@ type FloatingEdge = Edge<
     flip: boolean;
     mark: ChangeStatus | undefined;
     labelAt: Point | undefined;
+    route: Point[] | undefined;
     focus: EdgeFocus;
     onHover: (hovered: boolean) => void;
     onSelect: () => void;
@@ -96,7 +97,13 @@ const FloatingEdgeView = ({ id, source, target, data, label, markerEnd, selected
   const sourceBox = useBox(source);
   const targetBox = useBox(target);
   if (sourceBox == null || targetBox == null || data == null) return null;
-  const geometry = source === target ? loopPath(sourceBox, data.slot) : edgePath(sourceBox, targetBox, data.slot, data.flip);
+  const routed = data.route == null ? null : snapRoute(data.route, sourceBox, targetBox);
+  const geometry =
+    routed != null
+      ? { path: routePath(routed), label: pointAlong(routed, 0.5) }
+      : source === target
+        ? loopPath(sourceBox, data.slot)
+        : edgePath(sourceBox, targetBox, data.slot, data.flip);
   return (
     <>
       <BaseEdge
@@ -146,8 +153,41 @@ const boxOf = (node: EntityNode): Box => ({
   height: node.measured?.height ?? NODE_HEIGHT,
 });
 
+// Places on a route where its label can go: points along the route, then beside its middle, for a short route such as
+// a loop that has no free place on it.
+const routeLabelCandidates = (route: Point[], width: number) => {
+  const middle = pointAlong(route, 0.5);
+  const aside = width / 2 + 10;
+  return [...LABEL_STOPS.map((t) => pointAlong(route, t)), { x: middle.x - aside, y: middle.y }, { x: middle.x + aside, y: middle.y }];
+};
+
+// The saved routes that still fit: a route is dropped as soon as one of its nodes is not at its saved position, for
+// example while it is dragged.
+const fittingRoutes = (view: GraphContent, nodes: EntityNode[], routes: Map<string, Point[]> | undefined) => {
+  const fitting = new Map<string, Point[]>();
+  if (routes == null) return fitting;
+  const live = new Map(nodes.map((node) => [node.id, node.position]));
+  const unmoved = new Set(
+    view.nodes.flatMap(({ id, position }) => {
+      const now = live.get(id);
+      return position != null && now != null && now.x === position.x && now.y === position.y ? [id] : [];
+    }),
+  );
+  for (const edge of view.edges) {
+    const route = routes.get(edge.id);
+    if (route != null && unmoved.has(edge.source) && unmoved.has(edge.target)) fitting.set(edge.id, route);
+  }
+  return fitting;
+};
+
 // Places the labels with the current node positions, so that no label covers a node or another label.
-const labelPlaces = (view: GraphContent, nodes: EntityNode[], vocabulary: Vocabulary, slots: Map<string, ParallelSlot>) => {
+const labelPlaces = (
+  view: GraphContent,
+  nodes: EntityNode[],
+  vocabulary: Vocabulary,
+  slots: Map<string, ParallelSlot>,
+  routes: Map<string, Point[]>,
+) => {
   const boxes = new Map(nodes.map((node) => [node.id, boxOf(node)]));
   const labels: Label[] = [];
   for (const edge of view.edges) {
@@ -156,8 +196,13 @@ const labelPlaces = (view: GraphContent, nodes: EntityNode[], vocabulary: Vocabu
     const target = boxes.get(edge.target);
     if (text === "" || source == null || target == null) continue;
     const slot = slots.get(edge.id) ?? { index: 0, count: 1 };
+    const route = routes.get(edge.id);
     const candidates =
-      edge.source === edge.target ? [loopPath(source, slot).label] : LABEL_STOPS.map(edgePath(source, target, slot, edge.source > edge.target).at);
+      route != null
+        ? routeLabelCandidates(snapRoute(route, source, target), labelSize(text).width)
+        : edge.source === edge.target
+          ? [loopPath(source, slot).label]
+          : LABEL_STOPS.map(edgePath(source, target, slot, edge.source > edge.target).at);
     labels.push({ id: edge.id, candidates, ...labelSize(text) });
   }
   return placeLabels(labels, [...boxes.values()]);
@@ -172,9 +217,11 @@ const toFlowEdges = (
   hovered: string | null,
   setHovered: (update: (current: string | null) => string | null) => void,
   onSelect: (selection: Selection) => void,
+  savedRoutes: Map<string, Point[]> | undefined,
 ): FloatingEdge[] => {
   const slots = assignParallelSlots(view.edges);
-  const places = labelPlaces(view, nodes, vocabulary, slots);
+  const routes = fittingRoutes(view, nodes, savedRoutes);
+  const places = labelPlaces(view, nodes, vocabulary, slots, routes);
   return view.edges.map((edge) => ({
     id: edge.id,
     type: "floating",
@@ -191,6 +238,7 @@ const toFlowEdges = (
       status: edge.status,
       mark: marks?.edges.get(edge.id),
       labelAt: places.get(edge.id),
+      route: routes.get(edge.id),
       focus: hovered == null ? undefined : hovered === edge.id ? "hovered" : "dimmed",
       onHover: (on: boolean) => setHovered((current) => (on ? edge.id : current === edge.id ? null : current)),
       onSelect: () => onSelect({ kind: "edge", id: edge.id }),
@@ -207,6 +255,7 @@ export const GraphCanvas = ({
   onConnect,
   onRemove,
   marks,
+  routes,
   readOnly = false,
   children,
 }: {
@@ -217,6 +266,7 @@ export const GraphCanvas = ({
   onConnect?: (source: string, target: string) => void;
   onRemove?: (nodeIds: string[], edgeIds: string[]) => void;
   marks?: Marks;
+  routes?: Map<string, Point[]>;
   readOnly?: boolean;
   children?: ReactNode;
 }) => {
@@ -225,8 +275,8 @@ export const GraphCanvas = ({
   const vocabulary = useVocabulary();
   const [hovered, setHovered] = useState<string | null>(null);
   const edges = useMemo(
-    () => toFlowEdges(view, nodes, vocabulary, selection, marks, hovered, setHovered, onSelect),
-    [view, nodes, vocabulary, selection, marks, hovered, onSelect],
+    () => toFlowEdges(view, nodes, vocabulary, selection, marks, hovered, setHovered, onSelect, routes),
+    [view, nodes, vocabulary, selection, marks, hovered, onSelect, routes],
   );
 
   return (

@@ -23,9 +23,11 @@ const DIRECTIONS: { direction: LayoutDirection; name: string }[] = [
   { direction: "vertical", name: "Vertical" },
 ];
 
+// Moves nodes in the local draft. Like the server, it removes the routes of the edges of each moved node.
 const withPositions = (view: GraphView, positions: Record<string, Position>): GraphView => ({
   ...view,
   nodes: view.nodes.map((node) => ({ ...node, position: positions[node.id] ?? node.position })),
+  edges: view.edges.map((edge) => (edge.source in positions || edge.target in positions ? { ...edge, route: null } : edge)),
 });
 
 const alignTo = (content: GraphContent, layout: Map<string, Position | null>): GraphContent => ({
@@ -53,7 +55,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
   const loadDraft = useCallback(async () => {
     const next = await api.view(graphId);
     if (!next.nodes.some(({ position }) => position == null)) return next;
-    const positions = autoLayout(next.nodes, next.edges, true, next.graph.direction, (edge) => edgeText(edge, vocabulary));
+    const { positions } = await autoLayout(next.nodes, next.edges, true, next.graph.direction, (edge) => edgeText(edge, vocabulary));
     await api.moveNodes(graphId, positions);
     return withPositions(next, positions);
   }, [graphId, vocabulary]);
@@ -113,6 +115,8 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     [shownVersion, draftContent, layout],
   );
   const content = mode === "edit" ? draftContent : viewContent;
+  // The saved edge routes belong to the draft positions, so the canvas uses them only when it shows the draft.
+  const routes = useMemo(() => new Map((draft?.edges ?? []).flatMap(({ id, route }) => (route == null ? [] : [[id, route] as const]))), [draft]);
 
   useEffect(() => {
     if (selection == null || content == null) return;
@@ -143,7 +147,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     if (draft == null) return;
     void run(async () => {
       if (direction !== draft.graph.direction) await api.updateGraph(graphId, { direction });
-      await api.moveNodes(graphId, autoLayout(draft.nodes, draft.edges, false, direction, (edge) => edgeText(edge, vocabulary)));
+      await api.setLayout(graphId, await autoLayout(draft.nodes, draft.edges, false, direction, (edge) => edgeText(edge, vocabulary)));
     });
   };
 
@@ -299,6 +303,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
             <ReactFlowProvider>
               <GraphCanvas
                 view={content}
+                routes={content === draftContent ? routes : undefined}
                 selection={selection}
                 onSelect={setSelection}
                 onMove={move}

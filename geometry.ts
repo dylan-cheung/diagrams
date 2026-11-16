@@ -103,3 +103,59 @@ export const placeLabels = (labels: Label[], nodes: Box[]) => {
   }
   return placed;
 };
+
+// Moves the two ends of a saved route onto the border of their nodes. A route from the layout has right-angle bends, so
+// the first and last segments are vertical or horizontal; each end moves along its segment to the node side it faces.
+// This keeps the route attached when a node is a little taller or shorter than the layout assumed.
+export const snapRoute = (points: Point[], source: Box, target: Box): Point[] => {
+  const first = points[0];
+  const second = points[1];
+  const last = points[points.length - 1];
+  const beforeLast = points[points.length - 2];
+  if (first == null || second == null || last == null || beforeLast == null) return points;
+  const snap = (end: Point, next: Point, box: Box): Point => {
+    const c = center(box);
+    if (Math.abs(end.x - next.x) < 0.5) return { x: end.x, y: next.y >= c.y ? box.y + box.height : box.y };
+    return { x: next.x >= c.x ? box.x + box.width : box.x, y: end.y };
+  };
+  return [snap(first, second, source), ...points.slice(1, -1), snap(last, beforeLast, target)];
+};
+
+// An SVG path through the points, with rounded corners.
+export const routePath = (points: Point[], radius = 8) => {
+  const [start, ...rest] = points;
+  if (start == null) return "";
+  let path = `M${start.x} ${start.y}`;
+  for (let i = 0; i < rest.length; i++) {
+    const corner = rest[i] as Point;
+    const before = points[i] as Point;
+    const after = rest[i + 1];
+    if (after == null) {
+      path += ` L${corner.x} ${corner.y}`;
+      continue;
+    }
+    const r = Math.min(radius, Math.hypot(corner.x - before.x, corner.y - before.y) / 2, Math.hypot(after.x - corner.x, after.y - corner.y) / 2);
+    const toward = (from: Point, to: Point) => {
+      const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+      return { x: from.x + ((to.x - from.x) / length) * r, y: from.y + ((to.y - from.y) / length) * r };
+    };
+    const enter = toward(corner, before);
+    const leave = toward(corner, after);
+    path += ` L${enter.x} ${enter.y} Q${corner.x} ${corner.y} ${leave.x} ${leave.y}`;
+  }
+  return path;
+};
+
+// The point at a fraction t (0 to 1) of the length of a polyline.
+export const pointAlong = (points: Point[], t: number): Point => {
+  const lengths = points.slice(1).map((point, i) => Math.hypot(point.x - (points[i] as Point).x, point.y - (points[i] as Point).y));
+  let left = lengths.reduce((sum, length) => sum + length, 0) * t;
+  for (let i = 0; i < lengths.length; i++) {
+    const length = lengths[i] as number;
+    const from = points[i] as Point;
+    const to = points[i + 1] as Point;
+    if (left <= length) return length === 0 ? from : { x: from.x + ((to.x - from.x) * left) / length, y: from.y + ((to.y - from.y) * left) / length };
+    left -= length;
+  }
+  return points[points.length - 1] ?? { x: 0, y: 0 };
+};

@@ -1,5 +1,6 @@
 import type { GraphStore } from "./db.ts";
 import type { EdgeInput, NodeInput, Position } from "./model.ts";
+import LAYOUT from "./walkthrough-layout.json";
 
 // The walkthrough graph: a realistic example that uses every default node type, relationship type and status, and
 // shows parallel edges, a loop, a cycle and an undirected edge. The server makes it at start when it does not exist,
@@ -12,7 +13,7 @@ const GRAPH = {
     "An example to learn Diagram with. It shows how a claim moves from the customer app to a payout or an adjuster review, today and with a planned fraud check. It uses every node type, relationship type and status. Select a node or an edge to see its description and intent.",
 };
 
-type SeedNode = NodeInput & { key: string; position: Position };
+type SeedNode = NodeInput & { key: string };
 
 const NODES: SeedNode[] = [
   {
@@ -24,7 +25,6 @@ const NODES: SeedNode[] = [
     intent: "Let customers start a claim without a phone call.",
     labels: ["customer"],
     properties: { platforms: "ios, android" },
-    position: { x: 46, y: 20 },
   },
   {
     key: "dash",
@@ -34,7 +34,6 @@ const NODES: SeedNode[] = [
     description: "Web page where adjusters review and approve claims.",
     intent: "Give adjusters one queue for every claim that needs a person.",
     labels: ["staff"],
-    position: { x: 153, y: 850 },
   },
   {
     key: "api",
@@ -45,7 +44,6 @@ const NODES: SeedNode[] = [
     intent: "Keep one entry point for all claim changes.",
     labels: ["core"],
     properties: { owner: "claims team", sla_ms: 300 },
-    position: { x: 648, y: 186 },
   },
   {
     key: "validator",
@@ -55,7 +53,6 @@ const NODES: SeedNode[] = [
     description: "Library in the Claims API that checks required fields and policy dates.",
     intent: "Stop bad claims before they reach a person.",
     labels: ["core"],
-    position: { x: 1214, y: 352 },
   },
   {
     key: "pay",
@@ -65,7 +62,6 @@ const NODES: SeedNode[] = [
     description: "Sends payouts and tracks their state.",
     intent: "Keep payout state in one place.",
     labels: ["money"],
-    position: { x: 470, y: 850 },
   },
   {
     key: "notify",
@@ -75,7 +71,6 @@ const NODES: SeedNode[] = [
     description: "Sends texts to customers when a claim changes.",
     intent: "Tell customers about progress without an adjuster.",
     labels: ["comms"],
-    position: { x: 801, y: 850 },
   },
   {
     key: "fraud",
@@ -85,7 +80,6 @@ const NODES: SeedNode[] = [
     description: "Gives each claim a fraud score from 0 to 100.",
     intent: "Catch likely fraud before money leaves.",
     labels: ["risk"],
-    position: { x: 296, y: 352 },
   },
   {
     key: "db",
@@ -95,7 +89,6 @@ const NODES: SeedNode[] = [
     description: "Postgres tables for claims, photos and notes.",
     intent: "Keep the record of each claim.",
     properties: { engine: "postgres" },
-    position: { x: 472, y: 1038 },
   },
   {
     key: "queue",
@@ -105,7 +98,6 @@ const NODES: SeedNode[] = [
     description: "Topic that carries claim.submitted and claim.paid events.",
     intent: "Let services react to claims without direct calls.",
     properties: { engine: "kafka" },
-    position: { x: 889, y: 1038 },
   },
   {
     key: "archive",
@@ -114,7 +106,6 @@ const NODES: SeedNode[] = [
     status: "deprecated",
     description: "Old warehouse that gets a nightly copy of claims.",
     intent: "Keep reports running until the new warehouse is ready.",
-    position: { x: 472, y: 1204 },
   },
   {
     key: "card",
@@ -124,7 +115,6 @@ const NODES: SeedNode[] = [
     description: "Third-party company that sends money to cards and bank accounts.",
     intent: "Pay customers without holding card data.",
     labels: ["vendor"],
-    position: { x: 20, y: 1038 },
   },
   {
     key: "sms",
@@ -134,7 +124,6 @@ const NODES: SeedNode[] = [
     description: "Third-party text message gateway.",
     intent: "Reach customers on any phone.",
     labels: ["vendor"],
-    position: { x: 1161, y: 1038 },
   },
   {
     key: "fax",
@@ -144,7 +133,6 @@ const NODES: SeedNode[] = [
     description: "Old fax intake for claims from body shops.",
     intent: "Accept claims from partners without an app (no longer needed).",
     labels: ["vendor"],
-    position: { x: 703, y: 20 },
   },
   {
     key: "small",
@@ -154,7 +142,6 @@ const NODES: SeedNode[] = [
     description: "Compares the claim amount with the auto-pay limit.",
     intent: "Pay small claims at once, to make them faster.",
     properties: { limit_usd: 5000 },
-    position: { x: 443, y: 684 },
   },
   {
     key: "risky",
@@ -164,7 +151,6 @@ const NODES: SeedNode[] = [
     description: "Compares the fraud score with the review limit.",
     intent: "Send only risky claims to a person.",
     properties: { threshold: 70 },
-    position: { x: 296, y: 518 },
   },
 ];
 
@@ -208,19 +194,30 @@ const EDGES: SeedEdge[] = [
   },
 ];
 
-// Makes the walkthrough graph and publishes it as version 1, when the database does not have it.
+export type SavedLayout = { positions: Record<string, Position>; routes: Position[][] };
+
+// Makes the walkthrough graph with its saved ELK layout (walkthrough-layout.json), and publishes it as version 1, when
+// the database does not have it.
+export const WALKTHROUGH_NODES = NODES;
+export const WALKTHROUGH_EDGES = EDGES;
+
 export const ensureWalkthrough = (store: GraphStore) => {
   if (store.listGraphs().some(({ id }) => id === WALKTHROUGH_ID)) return false;
+  const layout = LAYOUT as SavedLayout;
   store.createGraph(GRAPH, WALKTHROUGH_ID);
   store.updateGraph(WALKTHROUGH_ID, { direction: "vertical" });
   const ids = new Map<string, string>();
-  for (const { key, position, ...input } of NODES) ids.set(key, store.createNodeInGraph(WALKTHROUGH_ID, input, position).id);
+  for (const { key, ...input } of NODES) ids.set(key, store.createNodeInGraph(WALKTHROUGH_ID, input, layout.positions[key] ?? null).id);
   const id = (key: string) => {
     const value = ids.get(key);
     if (value == null) throw new Error(`The walkthrough has no node ${key}.`);
     return value;
   };
-  for (const { from, to, ...input } of EDGES) store.createEdgeInGraph(WALKTHROUGH_ID, { ...input, source: id(from), target: id(to) });
+  const edgeIds = EDGES.map(({ from, to, ...input }) => store.createEdgeInGraph(WALKTHROUGH_ID, { ...input, source: id(from), target: id(to) }).id);
+  store.setLayout(WALKTHROUGH_ID, {
+    positions: Object.fromEntries(NODES.flatMap(({ key }) => (layout.positions[key] == null ? [] : [[id(key), layout.positions[key]]]))),
+    routes: Object.fromEntries(edgeIds.flatMap((edgeId, i) => (layout.routes[i] == null ? [] : [[edgeId, layout.routes[i]]]))),
+  });
   store.publish(WALKTHROUGH_ID);
   return true;
 };

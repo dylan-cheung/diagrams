@@ -115,6 +115,7 @@ describe("API docs", () => {
       "/api/graphs/{id}",
       "/api/graphs/{id}/edges",
       "/api/graphs/{id}/edges/{edgeId}",
+      "/api/graphs/{id}/layout",
       "/api/graphs/{id}/nodes",
       "/api/graphs/{id}/nodes/{nodeId}",
       "/api/graphs/{id}/positions",

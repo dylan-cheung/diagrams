@@ -15,6 +15,7 @@ import {
   GraphVersion,
   GraphVersionSummary,
   GraphView,
+  LayoutInput,
   Node,
   NodeInGraphInput,
   NodeInput,
@@ -275,6 +276,22 @@ export const createApi = (store: GraphStore) => {
       }),
       (c) => {
         store.moveNodes(c.req.valid("param").id, c.req.valid("json"));
+        return c.body(null, 204);
+      },
+    )
+    .openapi(
+      route({
+        method: "put",
+        path: "/api/graphs/{id}/layout",
+        tags: tag.membership,
+        summary: "Save a layout",
+        description:
+          "Saves the node positions and the edge routes of an auto layout in one step. Edges that are not in routes get no route. Moving a node later removes the routes of its edges in this graph.",
+        request: { params: IdParams, ...body(LayoutInput) },
+        responses: noContent,
+      }),
+      (c) => {
+        store.setLayout(c.req.valid("param").id, c.req.valid("json"));
         return c.body(null, 204);
       },
     )

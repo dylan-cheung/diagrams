@@ -7,6 +7,7 @@ import {
   EDGE_DESIGN_DEFAULTS,
   NODE_DESIGN_DEFAULTS,
   normalizeLabels,
+  type LayoutInput,
   type ContentEdge,
   type ContentNode,
   type EdgeInput,
@@ -259,6 +260,7 @@ const ADDED_COLUMNS: [string, string, string][] = [
   ["edges", "description", "TEXT NOT NULL DEFAULT ''"],
   ["edges", "intent", "TEXT NOT NULL DEFAULT ''"],
   ["edges", "status", "TEXT"],
+  ["graph_edges", "route", "TEXT"],
 ];
 
 export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VOCABULARY) => {
@@ -318,6 +320,18 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
 
   const touchGraph = (graphId: string) =>
     db.query("UPDATE graphs SET updated_at = $now WHERE id = $graphId").run({ graphId, now: now() });
+
+  // A route fits only the node positions of the layout that made it. When a node moves, the routes of its edges in that
+  // graph are removed, and the editor draws those edges as direct lines.
+  const moveNode = db.query("UPDATE graph_nodes SET x = $x, y = $y WHERE graph_id = $graphId AND node_id = $nodeId");
+
+  const clearRoutesOfNode = (graphId: string, nodeId: string) =>
+    db
+      .query(
+        `UPDATE graph_edges SET route = NULL WHERE graph_id = $graphId AND route IS NOT NULL
+         AND edge_id IN (SELECT id FROM edges WHERE source = $nodeId OR target = $nodeId)`,
+      )
+      .run({ graphId, nodeId });
 
   const createNode = (input: NodeInput) => {
     checkDesign(nodeDesignErrors(vocabulary, input));
@@ -412,6 +426,9 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
         AND EXISTS (SELECT 1 FROM graph_nodes gn WHERE gn.graph_id = graph_edges.graph_id AND gn.node_id = $target)
       )`,
     ).run({ id, source: input.source ?? edge.source, target: input.target ?? edge.target });
+    if ((input.source ?? edge.source) !== edge.source || (input.target ?? edge.target) !== edge.target) {
+      db.query("UPDATE graph_edges SET route = NULL WHERE edge_id = $id").run({ id });
+    }
     return requireEdge(id);
   };
 
@@ -422,6 +439,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       `INSERT INTO graph_nodes (graph_id, node_id, x, y) VALUES ($graphId, $nodeId, $x, $y)
        ON CONFLICT (graph_id, node_id) DO UPDATE SET x = excluded.x, y = excluded.y`,
     ).run({ graphId, nodeId, x: position?.x ?? null, y: position?.y ?? null });
+    clearRoutesOfNode(graphId, nodeId);
     if (includeEdges) {
       db.query(
         `INSERT OR IGNORE INTO graph_edges (graph_id, edge_id)
@@ -478,11 +496,11 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       .all({ graphId })
       .map((row) => ({ ...toNode(row), position: row.x == null || row.y == null ? null : { x: row.x, y: row.y } }));
     const edges = db
-      .query<EdgeRow, { graphId: string }>(
-        "SELECT e.* FROM graph_edges ge JOIN edges e ON e.id = ge.edge_id WHERE ge.graph_id = $graphId ORDER BY e.created_at, e.rowid",
+      .query<EdgeRow & { route: string | null }, { graphId: string }>(
+        "SELECT e.*, ge.route FROM graph_edges ge JOIN edges e ON e.id = ge.edge_id WHERE ge.graph_id = $graphId ORDER BY e.created_at, e.rowid",
       )
       .all({ graphId })
-      .map(toEdge);
+      .map((row) => ({ ...toEdge(row), route: row.route == null ? null : (JSON.parse(row.route) as Position[]) }));
     return { graph, nodes, edges };
   };
 
@@ -500,7 +518,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       view: {
         ...snapshot,
         nodes: snapshot.nodes.map((node) => ({ ...NODE_DESIGN_DEFAULTS, ...node })),
-        edges: snapshot.edges.map((edge) => ({ ...EDGE_DESIGN_DEFAULTS, ...edge })),
+        edges: snapshot.edges.map((edge) => ({ ...EDGE_DESIGN_DEFAULTS, ...edge, route: edge.route ?? null })),
       },
     };
   };
@@ -800,8 +818,17 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     }),
     moveNodes: db.transaction((graphId: string, positions: Record<string, Position>) => {
       requireGraph(graphId);
-      const move = db.query("UPDATE graph_nodes SET x = $x, y = $y WHERE graph_id = $graphId AND node_id = $nodeId");
-      for (const [nodeId, { x, y }] of Object.entries(positions)) move.run({ graphId, nodeId, x, y });
+      for (const [nodeId, { x, y }] of Object.entries(positions)) {
+        moveNode.run({ graphId, nodeId, x, y });
+        clearRoutesOfNode(graphId, nodeId);
+      }
+    }),
+    setLayout: db.transaction((graphId: string, { positions, routes }: LayoutInput) => {
+      requireGraph(graphId);
+      for (const [nodeId, { x, y }] of Object.entries(positions)) moveNode.run({ graphId, nodeId, x, y });
+      db.query("UPDATE graph_edges SET route = NULL WHERE graph_id = $graphId").run({ graphId });
+      const setRoute = db.query("UPDATE graph_edges SET route = $route WHERE graph_id = $graphId AND edge_id = $edgeId");
+      for (const [edgeId, points] of Object.entries(routes)) setRoute.run({ graphId, edgeId, route: JSON.stringify(points) });
     }),
     removeNodeFromGraph: db.transaction((graphId: string, nodeId: string) => {
       requireGraph(graphId);

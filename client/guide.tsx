@@ -209,6 +209,10 @@ export const Guide = () => {
               <li>
                 <b>Cycles.</b> Edges can form a cycle, for example A → B → C → A.
               </li>
+              <li>
+                <b>Routes.</b> <b>Auto layout</b> draws each edge around the nodes, with right-angle bends and few crossings. When you drag a node, its edges
+                become direct lines until you click <b>Auto layout</b> again.
+              </li>
             </ul>
             <h3>Relationship types</h3>
             <p>Event edges show as long dashes. A depends-on edge shows as dots.</p>

@@ -111,8 +111,21 @@ export const GraphSummary = Graph.extend({
 
 export const PlacedNode = Node.extend({ position: Position.nullable() }).openapi("PlacedNode");
 
+export const Route = z.array(Position).nullable().openapi("Route", {
+  description:
+    "The path of the edge in this graph from the last auto layout: the start point on the source node, the bend points, and the end point on the target node. It is null when the graph has no route for the edge, for example after one of its nodes moved. The editor then draws a direct line.",
+  example: [
+    { x: 110, y: 84 },
+    { x: 110, y: 140 },
+    { x: 260, y: 140 },
+    { x: 260, y: 190 },
+  ],
+});
+
+export const PlacedEdge = Edge.extend({ route: Route }).openapi("PlacedEdge");
+
 export const GraphView = z
-  .object({ graph: Graph, nodes: z.array(PlacedNode), edges: z.array(Edge) })
+  .object({ graph: Graph, nodes: z.array(PlacedNode), edges: z.array(PlacedEdge) })
   .openapi("GraphView");
 
 export const GraphVersionSummary = z
@@ -321,6 +334,13 @@ export const Positions = z.record(z.string(), Position).openapi("Positions", {
   example: { "6343537c-28f9-4dd8-943d-ef9abfb1fddf": { x: 40, y: 120 } },
 });
 
+export const LayoutInput = z
+  .object({
+    positions: Positions,
+    routes: z.record(z.string(), z.array(Position)).openapi({ description: "The route of each edge, by edge id. Edges that are not in the list get no route." }),
+  })
+  .openapi("LayoutInput");
+
 export const ErrorBody = z
   .object({ errors: z.array(z.string()) })
   .openapi("Error", { example: { errors: ["The node does not exist."] } });
@@ -335,6 +355,8 @@ export type GraphEdge = z.infer<typeof Edge>;
 export type Graph = z.infer<typeof Graph>;
 export type GraphSummary = z.infer<typeof GraphSummary>;
 export type PlacedNode = z.infer<typeof PlacedNode>;
+export type PlacedEdge = z.infer<typeof PlacedEdge>;
+export type LayoutInput = z.infer<typeof LayoutInput>;
 export type GraphView = z.infer<typeof GraphView>;
 export type GraphVersionSummary = z.infer<typeof GraphVersionSummary>;
 export type GraphVersion = z.infer<typeof GraphVersion>;

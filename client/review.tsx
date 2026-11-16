@@ -215,10 +215,10 @@ const Ledger = ({
   );
 };
 
-const mergedContent = (diff: GraphDiff, proposal: Proposal, direction: LayoutDirection): GraphContent => {
+const mergedContent = async (diff: GraphDiff, proposal: Proposal, direction: LayoutDirection): Promise<GraphContent> => {
   const nodes = diff.nodes.flatMap(({ after, before }) => (after ?? before) ?? []);
   const edges = diff.edges.flatMap(({ after, before }) => (after ?? before) ?? []);
-  const positions = autoLayout(nodes, edges, true, direction);
+  const { positions } = await autoLayout(nodes, edges, true, direction);
   const placed = nodes.map((node) => ({ ...node, position: node.position ?? positions[node.id] ?? null }));
   const removed = new Set(diff.nodes.filter(({ status }) => status === "removed").map(({ id }) => id));
   const taken = placed.flatMap(({ id, position }) => (removed.has(id) || position == null ? [] : [position]));
@@ -298,7 +298,17 @@ export const ProposalReview = ({
     () => new Map(result?.diff.nodes.flatMap(({ id, after, before }) => [[id, (after ?? before)?.name ?? id] as const]) ?? []),
     [result],
   );
-  const merged = useMemo(() => (result == null || proposal == null ? null : mergedContent(result.diff, proposal, draft.graph.direction)), [result, proposal, draft.graph.direction]);
+  const [merged, setMerged] = useState<GraphContent | null>(null);
+  useEffect(() => {
+    if (result == null || proposal == null) return setMerged(null);
+    let current = true;
+    void mergedContent(result.diff, proposal, draft.graph.direction).then((content) => {
+      if (current) setMerged(content);
+    });
+    return () => {
+      current = false;
+    };
+  }, [result, proposal, draft.graph.direction]);
   const marks = useMemo<Marks | undefined>(
     () =>
       result == null

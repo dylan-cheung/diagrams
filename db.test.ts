@@ -477,5 +477,31 @@ describe("walkthrough graph", () => {
     expect([...new Set([...nodes, ...edges].flatMap(({ status }) => (status == null ? [] : [status])))].sort()).toEqual(ids(DEFAULT_VOCABULARY.statuses));
     expect(edges.some(({ source, target }) => source === target)).toBe(true);
     expect(edges.some(({ directed }) => !directed)).toBe(true);
+    expect(edges.every(({ route }) => route != null && route.length >= 2)).toBe(true);
+  });
+});
+
+describe("edge routes", () => {
+  test("a layout saves routes, and moving a node removes the routes of its edges in that graph", () => {
+    const graph = store.createGraph({ name: "routes", description: "Test graph." }).id;
+    const a = store.createNodeInGraph(graph, { name: "A" }, { x: 0, y: 0 }).id;
+    const b = store.createNodeInGraph(graph, { name: "B" }, { x: 0, y: 200 }).id;
+    const c = store.createNodeInGraph(graph, { name: "C" }, { x: 300, y: 200 }).id;
+    const ab = store.createEdgeInGraph(graph, { source: a, target: b }).id;
+    const bc = store.createEdgeInGraph(graph, { source: b, target: c }).id;
+    const route = [
+      { x: 90, y: 56 },
+      { x: 90, y: 200 },
+    ];
+    store.setLayout(graph, { positions: { a: { x: 0, y: 0 } }, routes: { [ab]: route, [bc]: route } });
+    const routeOf = (id: string) => store.view(graph).edges.find((edge) => edge.id === id)?.route;
+    expect(routeOf(ab)).toEqual(route);
+    store.moveNodes(graph, { [c]: { x: 400, y: 200 } });
+    expect(routeOf(ab)).toEqual(route);
+    expect(routeOf(bc)).toBeNull();
+    const hash = contentHash(store.view(graph));
+    store.setLayout(graph, { positions: {}, routes: { [bc]: route } });
+    expect(routeOf(ab)).toBeNull();
+    expect(contentHash(store.view(graph))).toBe(hash);
   });
 });

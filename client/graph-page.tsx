@@ -277,8 +277,8 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
 
   const toolbarStart = (
     <>
-      <Link className="back" to={{ page: "list" }}>
-        ← Graphs
+      <Link className="back" to={{ page: "list" }} aria-label="Back to graphs" title="Back to graphs">
+        ←
       </Link>
       <h1>{draft?.graph.name ?? ""}</h1>
     </>
@@ -298,8 +298,8 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     return (
       <div className="app">
         <header className="toolbar">
-          <Link className="back" to={{ page: "list" }}>
-            ← Graphs
+          <Link className="back" to={{ page: "list" }} aria-label="Back to graphs" title="Back to graphs">
+            ←
           </Link>
         </header>
         <p className="empty">{errors.join(" ")}</p>

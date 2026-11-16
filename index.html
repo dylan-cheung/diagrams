@@ -6,6 +6,20 @@
     <title>Diagram</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="stylesheet" href="./client/styles.css" />
+    <script>
+      // React Flow measures each node with a ResizeObserver. When nodes move or change size during a measure (for
+      // example after a change from Claude through the API), the browser reports "ResizeObserver loop completed with
+      // undelivered notifications" and delivers the rest in the next frame, so nothing is lost. The report is noise,
+      // but the Bun dev overlay shows it as a runtime error over the canvas. This script runs before the Bun dev client,
+      // so its listener runs first and stops only this report.
+      window.addEventListener(
+        "error",
+        (event) => {
+          if (typeof event.message === "string" && event.message.startsWith("ResizeObserver loop")) event.stopImmediatePropagation();
+        },
+        true,
+      );
+    </script>
   </head>
   <body>
     <div id="root"></div>

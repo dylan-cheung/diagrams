@@ -258,6 +258,7 @@ export const GraphCanvas = ({
   marks,
   routes,
   onAddNode,
+  paletteFooter,
   readOnly = false,
   children,
 }: {
@@ -270,6 +271,7 @@ export const GraphCanvas = ({
   marks?: Marks;
   routes?: Map<string, Point[]>;
   onAddNode?: (type: string | null, position: Position) => void;
+  paletteFooter?: ReactNode;
   readOnly?: boolean;
   children?: ReactNode;
 }) => {
@@ -333,7 +335,7 @@ export const GraphCanvas = ({
     >
       <Background gap={20} />
       <Controls showInteractive={false} />
-      {canAdd && <NodePalette onAdd={onAddNode} />}
+      {canAdd && <NodePalette onAdd={onAddNode} footer={paletteFooter} />}
       {children}
     </ReactFlow>
   );

@@ -334,14 +334,6 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
       <header className="toolbar">
         {toolbarStart}
         <span className="spacer" />
-        <div className="tabs" role="group" aria-label="History">
-          <button type="button" onClick={undo} disabled={!canUndo || saving > 0} aria-label="Undo" title={`Undo${canUndo ? `: ${history.entries[history.index - 1]?.label ?? ""}` : ""} (${UNDO_KEY})`}>
-            ↶
-          </button>
-          <button type="button" onClick={redo} disabled={!canRedo || saving > 0} aria-label="Redo" title={`Redo${canRedo ? `: ${history.entries[history.index]?.label ?? ""}` : ""} (${REDO_KEY})`}>
-            ↷
-          </button>
-        </div>
         <button type="button" onClick={() => relayout(draft?.graph.direction ?? "horizontal")} disabled={draft == null || readOnly || draft.nodes.length === 0}>
           Auto layout
         </button>
@@ -391,6 +383,36 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
                 onConnect={(source, target) => void connect(source, target)}
                 onRemove={remove}
                 onAddNode={(type, position) => void addNode(type, position)}
+                paletteFooter={
+                  <div className="palette history-controls" role="group" aria-label="History">
+                    <button
+                      type="button"
+                      className="palette-tool"
+                      onClick={undo}
+                      disabled={!canUndo || saving > 0}
+                      aria-label="Undo"
+                      title={`Undo${canUndo ? `: ${history.entries[history.index - 1]?.label ?? ""}` : ""} (${UNDO_KEY})`}
+                    >
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M3 7v6h6" />
+                        <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className="palette-tool"
+                      onClick={redo}
+                      disabled={!canRedo || saving > 0}
+                      aria-label="Redo"
+                      title={`Redo${canRedo ? `: ${history.entries[history.index]?.label ?? ""}` : ""} (${REDO_KEY})`}
+                    >
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M21 7v6h-6" />
+                        <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
+                      </svg>
+                    </button>
+                  </div>
+                }
                 readOnly={readOnly}
               >
                 <Panel position="bottom-right" className="direction-panel">

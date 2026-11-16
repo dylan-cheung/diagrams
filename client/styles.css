@@ -593,6 +593,32 @@ button.add {
   background: rgb(0 0 0 / 0.3);
 }
 
+.palette-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.palette-tool {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+}
+
+.palette-tool:hover:not(:disabled) {
+  background: var(--chip);
+}
+
+.palette-tool:disabled {
+  color: var(--muted);
+  opacity: 0.45;
+}
+
 .palette {
   display: grid;
   gap: 8px;

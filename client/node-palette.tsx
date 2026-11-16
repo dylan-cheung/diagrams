@@ -51,7 +51,7 @@ const Icon = ({ id, name }: { id: string | null; name: string }) => {
 
 // A bar on the left of the canvas with one button for each node type. Drag a button onto the canvas to add a node of
 // that type there, or click it to add the node in the middle of the view.
-export const NodePalette = ({ onAdd }: { onAdd: (type: string | null, position: Position) => void }) => {
+export const NodePalette = ({ onAdd, footer }: { onAdd: (type: string | null, position: Position) => void; footer?: ReactNode }) => {
   const vocabulary = useVocabulary();
   const { getViewport, getNodes } = useReactFlow();
   const width = useStore((state) => state.width);
@@ -70,7 +70,8 @@ export const NodePalette = ({ onAdd }: { onAdd: (type: string | null, position: 
   const items = [...vocabulary.nodeTypes.map(({ id, name }) => ({ id: id as string | null, name })), { id: null, name: "Node without a type" }];
 
   return (
-    <Panel position="center-left" className="palette" aria-label="Add a node">
+    <Panel position="center-left" className="palette-stack">
+      <div className="palette" role="group" aria-label="Add a node">
       {items.map(({ id, name }) => (
         <button
           key={id ?? ""}
@@ -88,6 +89,8 @@ export const NodePalette = ({ onAdd }: { onAdd: (type: string | null, position: 
           <Icon id={id} name={name} />
         </button>
       ))}
+      </div>
+      {footer}
     </Panel>
   );
 };

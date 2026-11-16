@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { StoreError, contentHash, openGraphStore, type GraphStore } from "./db.ts";
 import type { EdgeInput, NodeInput } from "./model.ts";
+import { DEFAULT_VOCABULARY } from "./vocabulary.ts";
+import { ensureWalkthrough, WALKTHROUGH_ID } from "./walkthrough.ts";
 
 let store: GraphStore;
 
@@ -459,5 +461,21 @@ describe("design vocabulary", () => {
     } as unknown as typeof view;
     expect(contentHash(legacy)).toBe(contentHash(view));
     expect(contentHash({ ...view, nodes: view.nodes.map((node) => ({ ...node, status: "active" })) })).not.toBe(contentHash(view));
+  });
+});
+
+describe("walkthrough graph", () => {
+  test("uses every default node type, relationship type and status, and is made only once", () => {
+    expect(ensureWalkthrough(store)).toBe(true);
+    expect(ensureWalkthrough(store)).toBe(false);
+    const { graph, nodes, edges } = store.view(WALKTHROUGH_ID);
+    expect(graph.direction).toBe("vertical");
+    expect(store.listVersions(WALKTHROUGH_ID).map(({ version }) => version)).toEqual([1]);
+    const ids = (terms: { id: string }[]) => terms.map(({ id }) => id).sort();
+    expect([...new Set(nodes.map(({ type }) => type))].sort()).toEqual(ids(DEFAULT_VOCABULARY.nodeTypes));
+    expect([...new Set(edges.flatMap(({ type }) => (type == null ? [] : [type])))].sort()).toEqual(ids(DEFAULT_VOCABULARY.relationshipTypes));
+    expect([...new Set([...nodes, ...edges].flatMap(({ status }) => (status == null ? [] : [status])))].sort()).toEqual(ids(DEFAULT_VOCABULARY.statuses));
+    expect(edges.some(({ source, target }) => source === target)).toBe(true);
+    expect(edges.some(({ directed }) => !directed)).toBe(true);
   });
 });

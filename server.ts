@@ -6,6 +6,7 @@ import { createApi } from "./api.ts";
 import { openGraphStore, type GraphStore } from "./db.ts";
 import { Vocabulary } from "./schemas.ts";
 import { DEFAULT_VOCABULARY } from "./vocabulary.ts";
+import { ensureWalkthrough } from "./walkthrough.ts";
 
 const PORT = Number(process.env.PORT ?? 4848);
 const DB_PATH =
@@ -35,7 +36,13 @@ export const createServer = (store: GraphStore, port = PORT) => {
 };
 
 if (import.meta.main) {
-  const server = createServer(openGraphStore(DB_PATH, loadVocabulary(process.env.VOCABULARY)));
+  const store = openGraphStore(DB_PATH, loadVocabulary(process.env.VOCABULARY));
+  try {
+    if (ensureWalkthrough(store)) console.log("Made the walkthrough graph.");
+  } catch (error) {
+    console.error(`Could not make the walkthrough graph: ${(error as Error).message}`);
+  }
+  const server = createServer(store);
   console.log(`Diagram on ${server.url} (API docs at ${new URL("/docs", server.url)}, database ${DB_PATH})`);
   if (process.env.OPEN_BROWSER !== "0") Bun.spawn(["open", server.url.href]);
 }

@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import type { Term } from "../model.ts";
+import { WALKTHROUGH_ID } from "../walkthrough.ts";
 import { AppNav } from "./app-nav.tsx";
+import { Link } from "./router.tsx";
 import { useVocabulary } from "./vocabulary.ts";
 
 const SECTIONS = [
@@ -115,6 +117,10 @@ export const Guide = () => {
           </p>
 
           <Section id="walkthrough" title="Walkthrough">
+            <p>
+              Open the <Link to={{ page: "graph", graphId: WALKTHROUGH_ID, mode: "view" }}>walkthrough graph</Link> to see each part of this guide in one
+              realistic example. Select a node or an edge to read its description and intent. To make your own graph:
+            </p>
             <ol>
               <li>
                 On the <b>Graphs</b> page, click <b>+</b>. Give the graph a name and a purpose. The purpose says what question the graph answers.

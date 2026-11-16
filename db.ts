@@ -752,8 +752,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
             openProposals: row.open_proposals,
           };
         }),
-    createGraph: (input: GraphInput) => {
-      const id = crypto.randomUUID();
+    createGraph: (input: GraphInput, id: string = crypto.randomUUID()) => {
       const stamp = now();
       uniqueName(() =>
         db

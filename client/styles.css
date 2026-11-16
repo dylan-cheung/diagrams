@@ -542,6 +542,22 @@ button.add {
   min-height: 1lh;
 }
 
+.row-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.row-title .row-name {
+  min-width: 0;
+}
+
+.pill.walkthrough {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 /* The name column takes the free width, so the "…" also works on a narrow screen. */
 .graph-table td:first-child {
   width: 100%;

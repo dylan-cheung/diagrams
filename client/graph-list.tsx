@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { GraphSummary } from "../model.ts";
 import { ApiError, api } from "./api.ts";
+import { WALKTHROUGH_ID } from "../walkthrough.ts";
 import { AppNav } from "./app-nav.tsx";
 import { go, Link } from "./router.tsx";
 
@@ -204,9 +205,12 @@ export const GraphList = () => {
             {rows.map((row) => (
               <tr key={row.id} onClick={() => go({ page: "graph", graphId: row.id, mode: "view" })}>
                 <td>
-                  <Link className="row-name" to={{ page: "graph", graphId: row.id, mode: "view" }} onClick={(e) => e.stopPropagation()}>
-                    {row.name}
-                  </Link>
+                  <div className="row-title">
+                    <Link className="row-name" to={{ page: "graph", graphId: row.id, mode: "view" }} onClick={(e) => e.stopPropagation()}>
+                      {row.name}
+                    </Link>
+                    {row.id === WALKTHROUGH_ID && <span className="pill walkthrough">walkthrough</span>}
+                  </div>
                   <div className="row-purpose" title={row.description}>
                     {row.description}
                   </div>

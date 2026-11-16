@@ -78,6 +78,7 @@ The app opens at http://127.0.0.1:4848.
 
 ## Use
 
+- **Walkthrough graph** (`/graphs/walkthrough`): a realistic example that uses every node type, relationship type and status. The server makes it and publishes version 1 at start when the database does not have it, so it comes back after a delete. The data is in `walkthrough.ts`.
 - **Guide** (`/guide`, in the top bar next to **Graphs** and **API**) explains the parts of a graph: node types, edges, statuses, intent, the kinds of graph you can make, versions and proposals. It shows the current vocabulary in the same look as the canvas.
 - The first page is a table of graphs. Search it, and click a column name to sort it. The table shows the latest version, a **draft** mark when the draft has changes that are not published, and the number of open proposals. Click **+** to add a graph with a name and a description of its purpose. Click **…** at the end of a row for actions on that graph. **Delete** deletes the graph after you confirm.
 - Click a graph to open it in **View** mode (`/graphs/{id}`). View mode is read-only: select a node or an edge to see its details, and pick a published version to show. The panel also lists proposals and versions.

@@ -696,6 +696,26 @@ ul.errors {
   pointer-events: all;
 }
 
+.react-flow__edge-path.edge-hovered {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.react-flow__edge-path.edge-dimmed,
+.edge-label.edge-dimmed {
+  opacity: 0.25;
+}
+
+.edge-label {
+  cursor: pointer;
+}
+
+.edge-label.edge-hovered {
+  border-color: var(--accent);
+  color: var(--accent);
+  z-index: 1;
+}
+
 .edge-label.selected {
   border-color: var(--accent);
   color: var(--accent);

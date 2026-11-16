@@ -32,12 +32,15 @@ export const edgePath = (sourceBox: Box, targetBox: Box, slot: ParallelSlot, fli
   const shift = { x: (nx * offset) / 2, y: (ny * offset) / 2 };
   const start = sideAnchor(sourceBox, tc, shift);
   const end = sideAnchor(targetBox, sc, shift);
-  const label = {
-    x: 0.25 * start.x + 0.5 * control.x + 0.25 * end.x,
-    y: 0.25 * start.y + 0.5 * control.y + 0.25 * end.y,
-  };
+  const at = (t: number): Point =>
+    offset === 0
+      ? { x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t }
+      : {
+          x: (1 - t) ** 2 * start.x + 2 * (1 - t) * t * control.x + t ** 2 * end.x,
+          y: (1 - t) ** 2 * start.y + 2 * (1 - t) * t * control.y + t ** 2 * end.y,
+        };
   const path = offset === 0 ? `M${start.x} ${start.y} L${end.x} ${end.y}` : `M${start.x} ${start.y} Q${control.x} ${control.y} ${end.x} ${end.y}`;
-  return { path, label };
+  return { path, label: at(0.5), at };
 };
 
 export const loopPath = (box: Box, slot: ParallelSlot) => {
@@ -67,36 +70,36 @@ const LABEL_GAP = 4;
 
 export const labelSize = (text: string) => ({ width: Math.ceil(text.length * 6.6) + 16, height: LABEL_HEIGHT });
 
-export type Label = { id: string; at: Point; width: number; height: number };
+// Places on the edge where its label can go, in order of preference: the middle first, then further toward each end.
+export const LABEL_STOPS = [0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74, 0.18, 0.82];
+
+export type Label = { id: string; candidates: Point[]; width: number; height: number };
 
 const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-const boxAt = ({ at, width, height }: Label, dy: number): Box => ({
+const boxAt = ({ width, height }: Label, at: Point): Box => ({
   x: at.x - width / 2 - LABEL_GAP / 2,
-  y: at.y + dy - height / 2 - LABEL_GAP / 2,
+  y: at.y - height / 2 - LABEL_GAP / 2,
   width: width + LABEL_GAP,
   height: height + LABEL_GAP,
 });
 
-// Moves each label up or down from its place on the edge, in steps of one label height, to the nearest place that
-// does not cover a node or a label placed before it. A label that finds no free place stays where it is.
-export const placeLabels = (labels: Label[], nodes: Box[], maxSteps = 12) => {
+// Puts each label at the first of its candidate places (points on its own edge) that does not cover a node or a label
+// placed before it. The label stays on its edge, so the edge line runs into the label and out of it. A label that finds
+// no free place goes to its first candidate.
+export const placeLabels = (labels: Label[], nodes: Box[]) => {
   const taken: Box[] = [];
   const placed = new Map<string, Point>();
-  const order = [...labels].sort((a, b) => a.at.y - b.at.y || a.at.x - b.at.x || a.id.localeCompare(b.id));
+  const first = (label: Label) => label.candidates[0] ?? { x: 0, y: 0 };
+  const order = [...labels].sort((a, b) => first(a).y - first(b).y || first(a).x - first(b).x || a.id.localeCompare(b.id));
   for (const label of order) {
-    const step = label.height + LABEL_GAP;
-    let dy = 0;
-    for (let i = 0; i <= maxSteps * 2; i++) {
-      const candidate = (i % 2 === 1 ? 1 : -1) * Math.ceil(i / 2) * step;
-      const box = boxAt(label, candidate);
-      if (!nodes.some((node) => overlaps(box, node)) && !taken.some((other) => overlaps(box, other))) {
-        dy = candidate;
-        break;
-      }
-    }
-    taken.push(boxAt(label, dy));
-    placed.set(label.id, { x: label.at.x, y: label.at.y + dy });
+    const free = label.candidates.find((at) => {
+      const box = boxAt(label, at);
+      return !nodes.some((node) => overlaps(box, node)) && !taken.some((other) => overlaps(box, other));
+    });
+    const at = free ?? first(label);
+    taken.push(boxAt(label, at));
+    placed.set(label.id, at);
   }
   return placed;
 };

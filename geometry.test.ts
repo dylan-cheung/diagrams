@@ -3,13 +3,14 @@ import { assignParallelSlots, edgePath, parallelOffset, placeLabels, sideAnchor 
 import { parsePropertyValue } from "./model.ts";
 
 describe("geometry", () => {
-  test("moves labels so that they do not cover each other or a node", () => {
-    const at = { x: 100, y: 100 };
+  test("puts each label at a free place on its own edge", () => {
     const nodes = [{ x: 0, y: 0, width: 200, height: 60 }];
-    const labels = ["a", "b", "c"].map((id) => ({ id, at, width: 120, height: 18 }));
+    const line = (x: number) => [0.5, 0.42, 0.58, 0.34, 0.66].map((t) => ({ x, y: 60 + 160 * t }));
+    const labels = [80, 100, 120].map((x) => ({ id: String(x), candidates: line(x), width: 120, height: 18 }));
     const placed = placeLabels(labels, nodes);
-    const ys = labels.map(({ id }) => placed.get(id)?.y ?? 0).sort((a, b) => a - b);
-    expect(new Set(ys).size).toBe(3);
+    const points = labels.map(({ id }) => placed.get(id) ?? { x: 0, y: 0 });
+    expect(points.map(({ x }) => x)).toEqual([80, 100, 120]);
+    const ys = points.map(({ y }) => y).sort((a, b) => a - b);
     for (let i = 1; i < ys.length; i++) expect((ys[i] ?? 0) - (ys[i - 1] ?? 0)).toBeGreaterThanOrEqual(18);
     for (const y of ys) expect(y - 9).toBeGreaterThanOrEqual(60);
   });

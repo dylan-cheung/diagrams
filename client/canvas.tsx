@@ -16,8 +16,8 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { useEffect, useMemo, type ReactNode } from "react";
-import { assignParallelSlots, edgePath, labelSize, loopPath, placeLabels, type Box, type Label, type ParallelSlot, type Point } from "../geometry.ts";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { assignParallelSlots, edgePath, LABEL_STOPS, labelSize, loopPath, placeLabels, type Box, type Label, type ParallelSlot, type Point } from "../geometry.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
 import type { ChangeStatus, ContentEdge, GraphContent, Position, Vocabulary } from "../model.ts";
 import { termName } from "../vocabulary.ts";
@@ -29,7 +29,21 @@ export type Marks = { nodes: Map<string, ChangeStatus>; edges: Map<string, Chang
 
 type Design = { type: string | null; status: string | null };
 type EntityNode = Node<Design & { name: string; labels: string[]; mark: ChangeStatus | undefined }, "entity">;
-type FloatingEdge = Edge<Design & { slot: ParallelSlot; flip: boolean; mark: ChangeStatus | undefined; labelAt: Point | undefined }, "floating">;
+type EdgeFocus = "hovered" | "dimmed" | undefined;
+type FloatingEdge = Edge<
+  Design & {
+    slot: ParallelSlot;
+    flip: boolean;
+    mark: ChangeStatus | undefined;
+    labelAt: Point | undefined;
+    focus: EdgeFocus;
+    onHover: (hovered: boolean) => void;
+    onSelect: () => void;
+  },
+  "floating"
+>;
+
+const focusClass = (focus: EdgeFocus) => (focus == null ? "" : ` edge-${focus}`);
 
 const markClass = (mark: ChangeStatus | undefined) => (mark == null ? "" : ` mark-${mark}`);
 
@@ -89,12 +103,15 @@ const FloatingEdgeView = ({ id, source, target, data, label, markerEnd, selected
         id={id}
         path={geometry.path}
         markerEnd={markerEnd}
-        className={`${selected ? "edge-selected" : ""}${markClass(data.mark)}${designClass(data)}`}
+        className={`${selected ? "edge-selected" : ""}${markClass(data.mark)}${designClass(data)}${focusClass(data.focus)}`}
       />
       {label != null && label !== "" && (
         <EdgeLabelRenderer>
           <div
-            className={`edge-label${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}`}
+            className={`edge-label${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}${focusClass(data.focus)}`}
+            onMouseEnter={() => data.onHover(true)}
+            onMouseLeave={() => data.onHover(false)}
+            onClick={data.onSelect}
             style={{ transform: `translate(-50%, -50%) translate(${(data.labelAt ?? geometry.label).x}px, ${(data.labelAt ?? geometry.label).y}px)` }}
           >
             {label}
@@ -139,13 +156,23 @@ const labelPlaces = (view: GraphContent, nodes: EntityNode[], vocabulary: Vocabu
     const target = boxes.get(edge.target);
     if (text === "" || source == null || target == null) continue;
     const slot = slots.get(edge.id) ?? { index: 0, count: 1 };
-    const at = edge.source === edge.target ? loopPath(source, slot).label : edgePath(source, target, slot, edge.source > edge.target).label;
-    labels.push({ id: edge.id, at, ...labelSize(text) });
+    const candidates =
+      edge.source === edge.target ? [loopPath(source, slot).label] : LABEL_STOPS.map(edgePath(source, target, slot, edge.source > edge.target).at);
+    labels.push({ id: edge.id, candidates, ...labelSize(text) });
   }
   return placeLabels(labels, [...boxes.values()]);
 };
 
-const toFlowEdges = (view: GraphContent, nodes: EntityNode[], vocabulary: Vocabulary, selection: Selection, marks: Marks | undefined): FloatingEdge[] => {
+const toFlowEdges = (
+  view: GraphContent,
+  nodes: EntityNode[],
+  vocabulary: Vocabulary,
+  selection: Selection,
+  marks: Marks | undefined,
+  hovered: string | null,
+  setHovered: (update: (current: string | null) => string | null) => void,
+  onSelect: (selection: Selection) => void,
+): FloatingEdge[] => {
   const slots = assignParallelSlots(view.edges);
   const places = labelPlaces(view, nodes, vocabulary, slots);
   return view.edges.map((edge) => ({
@@ -164,6 +191,9 @@ const toFlowEdges = (view: GraphContent, nodes: EntityNode[], vocabulary: Vocabu
       status: edge.status,
       mark: marks?.edges.get(edge.id),
       labelAt: places.get(edge.id),
+      focus: hovered == null ? undefined : hovered === edge.id ? "hovered" : "dimmed",
+      onHover: (on: boolean) => setHovered((current) => (on ? edge.id : current === edge.id ? null : current)),
+      onSelect: () => onSelect({ kind: "edge", id: edge.id }),
     },
     selected: selection?.kind === "edge" && selection.id === edge.id,
   }));
@@ -193,7 +223,11 @@ export const GraphCanvas = ({
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityNode>(toFlowNodes(view, selection, marks));
   useEffect(() => setNodes(toFlowNodes(view, selection, marks)), [view, selection, marks, setNodes]);
   const vocabulary = useVocabulary();
-  const edges = useMemo(() => toFlowEdges(view, nodes, vocabulary, selection, marks), [view, nodes, vocabulary, selection, marks]);
+  const [hovered, setHovered] = useState<string | null>(null);
+  const edges = useMemo(
+    () => toFlowEdges(view, nodes, vocabulary, selection, marks, hovered, setHovered, onSelect),
+    [view, nodes, vocabulary, selection, marks, hovered, onSelect],
+  );
 
   return (
     <ReactFlow
@@ -213,6 +247,8 @@ export const GraphCanvas = ({
       }}
       onNodeClick={(_, node) => onSelect({ kind: "node", id: node.id })}
       onEdgeClick={(_, edge) => onSelect({ kind: "edge", id: edge.id })}
+      onEdgeMouseEnter={(_, edge) => setHovered(edge.id)}
+      onEdgeMouseLeave={(_, edge) => setHovered((current) => (current === edge.id ? null : current))}
       onPaneClick={() => onSelect(null)}
       onNodeDragStop={(_, __, dragged) =>
         onMove?.(Object.fromEntries(dragged.map((node) => [node.id, { x: Math.round(node.position.x), y: Math.round(node.position.y) }])))

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import type { Flow, FlowStep, GraphContent } from "../model.ts";
 import { edgeText, type FlowPath } from "./canvas.tsx";
 import { TextAreaField, TextField } from "./fields.tsx";
+import { PanelSection } from "./view-panel.tsx";
 import { useVocabulary } from "./vocabulary.ts";
 
 const isBroken = (content: GraphContent, { nodeId, edgeId }: FlowStep) =>
@@ -25,19 +26,53 @@ export const FlowsSection = ({
   onOpen: (flowId: string) => void;
   onCreate?: (name: string) => void;
 }) => {
+  const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (onCreate == null || name.trim() === "") return;
     onCreate(name.trim());
     setName("");
+    setAdding(false);
   };
   return (
-    <section className="section">
-      <h2>Flows</h2>
-      <p className="hint">A flow is one path through the graph, step by step: the main path of a feature, or an edge case.</p>
+    <PanelSection
+      id="flows"
+      title="Flows"
+      count={flows.length}
+      about="A flow is one path through the graph, step by step: the main path of a feature, or an edge case."
+      action={
+        onCreate != null && (
+          <button type="button" className="panel-action" onClick={() => setAdding(!adding)} aria-label="New flow" title="New flow">
+            +
+          </button>
+        )
+      }
+    >
+      {adding && (
+        <form className="flow-new" autoComplete="off" onSubmit={submit}>
+          <input
+            value={name}
+            placeholder="Name of the new flow"
+            aria-label="Name of the new flow"
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setAdding(false);
+            }}
+            autoFocus
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-bwignore
+            data-form-type="other"
+          />
+          <button type="submit" disabled={name.trim() === ""}>
+            Add
+          </button>
+        </form>
+      )}
       {flows.length === 0 ? (
-        <p className="meta">No flows.</p>
+        !adding && <p className="meta">No flows. {onCreate != null && "Click + to trace a path through the graph."}</p>
       ) : (
         <ul className="versions">
           {flows.map((flow) => (
@@ -52,25 +87,7 @@ export const FlowsSection = ({
           ))}
         </ul>
       )}
-      {onCreate != null && (
-        <form className="flow-new" autoComplete="off" onSubmit={submit}>
-          <input
-            value={name}
-            placeholder="Name of a new flow"
-            aria-label="Name of a new flow"
-            onChange={(e) => setName(e.target.value)}
-            autoComplete="off"
-            data-1p-ignore
-            data-lpignore="true"
-            data-bwignore
-            data-form-type="other"
-          />
-          <button type="submit" disabled={name.trim() === ""}>
-            Add
-          </button>
-        </form>
-      )}
-    </section>
+    </PanelSection>
   );
 };
 

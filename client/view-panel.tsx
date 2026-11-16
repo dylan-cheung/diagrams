@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { ContentEdge, ContentNode, GraphContent, GraphVersionSummary, Properties, ProposalSummary } from "../model.ts";
 import { termName } from "../vocabulary.ts";
 import type { Selection } from "./canvas.tsx";
@@ -8,6 +8,59 @@ import { Link } from "./router.tsx";
 import { useVocabulary } from "./vocabulary.ts";
 
 export type Shown = number | "draft";
+
+const readOpen = (id: string, fallback: boolean) => {
+  try {
+    const saved = localStorage.getItem(`diagram.panel.${id}`);
+    return saved == null ? fallback : saved === "open";
+  } catch {
+    return fallback;
+  }
+};
+
+// A section of the panel that opens and closes. It keeps its state in this browser.
+export const PanelSection = ({
+  id,
+  title,
+  count,
+  about,
+  action,
+  closedAtFirst = false,
+  children,
+}: {
+  id: string;
+  title: string;
+  count?: number;
+  about: string;
+  action?: ReactNode;
+  closedAtFirst?: boolean;
+  children: ReactNode;
+}) => {
+  const [open, setOpen] = useState(() => readOpen(id, !closedAtFirst));
+  const toggle = () => {
+    setOpen(!open);
+    try {
+      localStorage.setItem(`diagram.panel.${id}`, open ? "closed" : "open");
+    } catch {
+      // The section still opens and closes when the browser does not keep the state.
+    }
+  };
+  return (
+    <section className={`panel-section${open ? " open" : ""}`}>
+      <div className="panel-head">
+        <button type="button" className="panel-toggle" aria-expanded={open} onClick={toggle} title={about}>
+          <svg className="chevron" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+            <path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <h2>{title}</h2>
+          {count != null && <span className="count">{count}</span>}
+        </button>
+        {action}
+      </div>
+      {open && <div className="panel-body">{children}</div>}
+    </section>
+  );
+};
 
 const nameOf = (content: GraphContent, id: string) => content.nodes.find((node) => node.id === id)?.name ?? id;
 
@@ -110,9 +163,12 @@ export const GraphSections = ({
   onShow: (shown: Shown) => void;
 }) => (
   <>
-    <section className="section">
-      <h2>Proposals</h2>
-      <p className="hint">A proposal is a changed copy of the graph, for example from Claude. Review it before you apply it.</p>
+    <PanelSection
+      id="proposals"
+      title="Proposals"
+      count={proposals.filter(({ status }) => status === "open").length}
+      about="A proposal is a changed copy of the graph, for example from Claude. Review it before you apply it."
+    >
       {proposals.length === 0 ? (
         <p className="meta">No proposals.</p>
       ) : (
@@ -127,10 +183,13 @@ export const GraphSections = ({
           ))}
         </ul>
       )}
-    </section>
-    <section className="section">
-      <h2>Versions</h2>
-      <p className="hint">Apps run a published version. Click a version to look at it. Only the draft can change.</p>
+    </PanelSection>
+    <PanelSection
+      id="versions"
+      title="Versions"
+      count={versions.length}
+      about="Apps run a published version. Click a version to look at it. Only the draft can change."
+    >
       <ul className="versions">
         <li>
           <button type="button" className={`link${shown === "draft" ? " current" : ""}`} onClick={() => onShow("draft")}>
@@ -148,7 +207,7 @@ export const GraphSections = ({
           </li>
         ))}
       </ul>
-    </section>
+    </PanelSection>
   </>
 );
 
@@ -200,11 +259,13 @@ export const HistorySection = ({
   disabled: boolean;
   onGo: (index: number) => void;
 }) => (
-  <section className="section">
-    <h2>History</h2>
-    <p className="hint">
-      The changes in this session. Undo with {undoKey} and redo with {redoKey}, or click a change to go back to it.
-    </p>
+  <PanelSection
+    id="history"
+    title="History"
+    count={history.entries.length}
+    about={`The changes in this session. Undo with ${undoKey} and redo with ${redoKey}, or click a change to go back to it.`}
+    closedAtFirst
+  >
     {history.entries.length === 0 ? (
       <p className="meta">No changes yet.</p>
     ) : (
@@ -226,5 +287,5 @@ export const HistorySection = ({
         </li>
       </ol>
     )}
-  </section>
+  </PanelSection>
 );

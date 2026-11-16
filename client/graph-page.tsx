@@ -6,7 +6,7 @@ import type { FlowStep, GraphContent, GraphEdge, GraphSummary, GraphVersion, Gra
 import { ApiError, api } from "./api.ts";
 import { edgeText, GraphCanvas, type Selection } from "./canvas.tsx";
 import { FlowPanel, FlowsSection, pathOf, type FlowActions } from "./flow-panel.tsx";
-import { Inspector, type InspectorActions } from "./inspector.tsx";
+import { GraphFooter, Inspector, type InspectorActions } from "./inspector.tsx";
 import { ProposalReview } from "./review.tsx";
 import { go, Link, type Route } from "./router.tsx";
 import { termName } from "../vocabulary.ts";
@@ -527,8 +527,9 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
               {selection == null && (
                 <>
                   <FlowsSection flows={flows} content={draftContent} onOpen={openFlow} onCreate={(name) => void createFlow(name)} />
-                  <HistorySection history={history} undoKey={UNDO_KEY} redoKey={REDO_KEY} onGo={(index) => void goToHistory(index)} disabled={saving > 0} />
                   {sections}
+                  <HistorySection history={history} undoKey={UNDO_KEY} redoKey={REDO_KEY} onGo={(index) => void goToHistory(index)} disabled={saving > 0} />
+                  <GraphFooter view={draft} actions={actions} />
                 </>
               )}
             </>

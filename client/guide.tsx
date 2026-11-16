@@ -353,7 +353,7 @@ export const Guide = () => {
             />
             <ol>
               <li>
-                With nothing selected, find <b>Flows</b> in the panel. Type a name and click <b>Add</b>.
+                With nothing selected, click <b>+</b> next to <b>Flows</b> in the panel. Type a name and click <b>Add</b>.
               </li>
               <li>Click the node where the flow starts. Then click each next node, or the edge to follow when more than one edge connects two nodes.</li>
               <li>

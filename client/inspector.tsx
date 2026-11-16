@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { normalizeLabels, type GraphEdge, type GraphInput, type GraphNode, type GraphView } from "../model.ts";
 import { PropertiesField, SelectField, TextAreaField, TextField } from "./fields.tsx";
 import { useVocabulary } from "./vocabulary.ts";
@@ -126,30 +127,65 @@ const EdgeInspector = ({ edge, view, actions }: { edge: GraphEdge; view: GraphVi
   );
 };
 
-const GraphInspector = ({ view, actions }: { view: GraphView; actions: InspectorActions }) => (
-  <section className="section">
-    <h2>Graph</h2>
-    <TextField label="Name" value={view.graph.name} onCommit={(name) => actions.updateGraph({ name })} />
-    <TextAreaField
-      label="Purpose"
-      placeholder="What is this graph for?"
-      value={view.graph.description}
-      onCommit={(description) => actions.updateGraph({ description })}
-    />
-    <p className="hint">
-      {view.nodes.length} nodes and {view.edges.length} edges. Drag from a dot on one node to a dot on another node to add an edge. Drag to a dot on the same node to add a loop. Select a node or an edge to edit it.
-    </p>
+const NO_FILL = { autoComplete: "off", "data-1p-ignore": true, "data-lpignore": "true", "data-bwignore": true, "data-form-type": "other" } as const;
+
+const GraphInspector = ({ view, actions }: { view: GraphView; actions: InspectorActions }) => {
+  const [name, setName] = useState(view.graph.name);
+  const [purpose, setPurpose] = useState(view.graph.description);
+  useEffect(() => setName(view.graph.name), [view.graph.name]);
+  useEffect(() => setPurpose(view.graph.description), [view.graph.description]);
+  return (
+    <section className="section graph-head">
+      <input
+        className="title-input"
+        aria-label="Graph name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={() => {
+          if (name.trim() !== "" && name !== view.graph.name) actions.updateGraph({ name });
+          else setName(view.graph.name);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") setName(view.graph.name);
+        }}
+        {...NO_FILL}
+      />
+      <textarea
+        className="purpose-input"
+        aria-label="Purpose"
+        placeholder="What is this graph for?"
+        value={purpose}
+        onChange={(e) => setPurpose(e.target.value)}
+        onBlur={() => {
+          if (purpose !== view.graph.description) actions.updateGraph({ description: purpose });
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setPurpose(view.graph.description);
+        }}
+        {...NO_FILL}
+      />
+      <p className="meta">
+        {view.nodes.length} nodes · {view.edges.length} edges
+      </p>
+    </section>
+  );
+};
+
+// The end of the panel for the graph: its id and the action to delete it.
+export const GraphFooter = ({ view, actions }: { view: GraphView; actions: InspectorActions }) => (
+  <footer className="panel-footer">
+    <span className="mono">{view.graph.id}</span>
     <button
       type="button"
-      className="danger"
+      className="link danger"
       onClick={() => {
         if (confirm(`Delete the graph "${view.graph.name}"? Its nodes and edges are deleted too.`)) actions.deleteGraph();
       }}
     >
       Delete graph
     </button>
-    <p className="mono">{view.graph.id}</p>
-  </section>
+  </footer>
 );
 
 export const Inspector = ({

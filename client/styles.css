@@ -593,6 +593,15 @@ button.add {
   background: rgb(0 0 0 / 0.3);
 }
 
+.save-status {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.save-status.changed {
+  color: var(--accent);
+}
+
 .floating-note {
   padding: 6px 10px;
   border: 1px solid var(--line);

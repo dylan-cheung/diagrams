@@ -207,9 +207,6 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
         ← Graphs
       </Link>
       <h1>{draft?.graph.name ?? ""}</h1>
-      <span className={`status${saving === 0 && summary?.changed === true ? " changed" : ""}`} aria-live="polite">
-        {status}
-      </span>
     </>
   );
 
@@ -329,6 +326,11 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
                 onRemove={remove}
                 readOnly={readOnly}
               >
+                {!readOnly && status !== "" && (
+                  <Panel position="top-right" className={`floating-note save-status${saving === 0 && summary?.changed === true ? " changed" : ""}`}>
+                    <span aria-live="polite">{status}</span>
+                  </Panel>
+                )}
                 {readOnly && (
                   <Panel position="top-center" className="floating-note">
                     <span className="meta">Version {shown} is read-only. </span>

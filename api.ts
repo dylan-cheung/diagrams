@@ -4,6 +4,7 @@ import { StoreError, type GraphStore } from "./db.ts";
 import {
   ApplyInput,
   ApplyResult,
+  DraftState,
   Edge,
   EdgeInput,
   EdgePatch,
@@ -294,6 +295,19 @@ export const createApi = (store: GraphStore) => {
         store.setLayout(c.req.valid("param").id, c.req.valid("json"));
         return c.body(null, 204);
       },
+    )
+    .openapi(
+      route({
+        method: "put",
+        path: "/api/graphs/{id}/draft",
+        tags: tag.membership,
+        summary: "Restore the draft",
+        description:
+          "Makes the draft equal to an earlier state that the editor kept, for undo and redo: the graph name and purpose, the nodes with their positions, the edges, and the edge routes. A node or an edge that is not in the draft any more comes back with the same id. A change to a node or an edge applies in every graph that holds it.",
+        request: { params: IdParams, ...body(DraftState) },
+        responses: { 200: json(GraphView, "The restored draft.") },
+      }),
+      (c) => c.json(store.restoreDraft(c.req.valid("param").id, c.req.valid("json")), 200),
     )
     .openapi(
       route({

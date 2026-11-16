@@ -341,6 +341,13 @@ export const LayoutInput = z
   })
   .openapi("LayoutInput");
 
+export const DraftState = z
+  .object({
+    content: GraphContent,
+    routes: z.record(z.string(), z.array(Position)).openapi({ description: "The route of each edge, by edge id." }),
+  })
+  .openapi("DraftState", { description: "A state of the draft that the editor kept: its content with positions, and its edge routes." });
+
 export const ErrorBody = z
   .object({ errors: z.array(z.string()) })
   .openapi("Error", { example: { errors: ["The node does not exist."] } });
@@ -357,6 +364,7 @@ export type GraphSummary = z.infer<typeof GraphSummary>;
 export type PlacedNode = z.infer<typeof PlacedNode>;
 export type PlacedEdge = z.infer<typeof PlacedEdge>;
 export type LayoutInput = z.infer<typeof LayoutInput>;
+export type DraftState = z.infer<typeof DraftState>;
 export type GraphView = z.infer<typeof GraphView>;
 export type GraphVersionSummary = z.infer<typeof GraphVersionSummary>;
 export type GraphVersion = z.infer<typeof GraphVersion>;

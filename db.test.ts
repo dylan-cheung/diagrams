@@ -4,6 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { StoreError, contentHash, openGraphStore, type GraphStore } from "./db.ts";
+import { toContent } from "./diff.ts";
 import type { EdgeInput, NodeInput } from "./model.ts";
 import { DEFAULT_VOCABULARY } from "./vocabulary.ts";
 import { ensureWalkthrough, WALKTHROUGH_ID } from "./walkthrough.ts";
@@ -503,5 +504,26 @@ describe("edge routes", () => {
     store.setLayout(graph, { positions: {}, routes: { [bc]: route } });
     expect(routeOf(ab)).toBeNull();
     expect(contentHash(store.view(graph))).toBe(hash);
+  });
+});
+
+describe("restore the draft", () => {
+  test("brings back deleted nodes and edges with the same ids, positions and routes", () => {
+    const graph = store.createGraph({ name: "undo", description: "Test graph." }).id;
+    const a = store.createNodeInGraph(graph, { name: "A", type: "service" }, { x: 0, y: 0 }).id;
+    const b = store.createNodeInGraph(graph, { name: "B" }, { x: 0, y: 200 }).id;
+    const ab = store.createEdgeInGraph(graph, { source: a, target: b, label: "calls" }).id;
+    const route = [
+      { x: 90, y: 64 },
+      { x: 90, y: 200 },
+    ];
+    store.setLayout(graph, { positions: {}, routes: { [ab]: route } });
+    const before = store.view(graph);
+    store.removeNodeFromGraph(graph, b);
+    store.updateNode(a, { name: "A renamed" });
+    store.createNodeInGraph(graph, { name: "C" }, { x: 300, y: 0 });
+    const restored = store.restoreDraft(graph, { content: toContent(before), routes: { [ab]: route } });
+    expect(restored.nodes.map(({ id, name, position }) => [id, name, position])).toEqual(before.nodes.map(({ id, name, position }) => [id, name, position]));
+    expect(restored.edges.map(({ id, source, target, label, route }) => [id, source, target, label, route])).toEqual([[ab, a, b, "calls", route]]);
   });
 });

@@ -7,6 +7,7 @@ import {
   EDGE_DESIGN_DEFAULTS,
   NODE_DESIGN_DEFAULTS,
   normalizeLabels,
+  type DraftState,
   type LayoutInput,
   type ContentEdge,
   type ContentNode,
@@ -333,9 +334,8 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       )
       .run({ graphId, nodeId });
 
-  const createNode = (input: NodeInput) => {
+  const createNode = (input: NodeInput, id: string = crypto.randomUUID()) => {
     checkDesign(nodeDesignErrors(vocabulary, input));
-    const id = crypto.randomUUID();
     const stamp = now();
     db.query(
       `INSERT INTO nodes (id, name, description, type, intent, status, labels, properties, created_at, updated_at)
@@ -374,11 +374,10 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     return requireNode(id);
   };
 
-  const createEdge = (input: EdgeInput) => {
+  const createEdge = (input: EdgeInput, id: string = crypto.randomUUID()) => {
     requireNode(input.source);
     requireNode(input.target);
     checkDesign(edgeDesignErrors(vocabulary, input));
-    const id = crypto.randomUUID();
     const stamp = now();
     db.query(
       `INSERT INTO edges (id, source, target, directed, type, label, description, intent, status, properties, created_at, updated_at)
@@ -677,8 +676,10 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     return toProposal(requireProposal(graphId, proposalId));
   };
 
-  const applyProposal = db.transaction((graphId: string, proposalId: string, andPublish: boolean) => {
-    const { graph, nodes, edges } = toProposal(requireOpenProposal(graphId, proposalId)).content;
+  // Makes the draft of a graph equal to the content. Nodes and edges with an existing id keep it and change. Others are
+  // new: with keepIds they get the id from the content (to restore a node or an edge that an undo brings back), and
+  // without it they get a new id (a proposal uses its own keys for new items). Returns the content with the final ids.
+  const applyContent = (graphId: string, { graph, nodes, edges }: GraphContent, keepIds: boolean): GraphContent => {
     const current = view(graphId);
     if (graph.name !== current.graph.name || graph.description !== current.graph.description) {
       uniqueName(() =>
@@ -690,7 +691,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     const nodeIds = new Map<string, string>();
     for (const node of nodes) {
       const row = nodeById.get({ id: node.id });
-      const id = row == null ? createNode(node).id : node.id;
+      const id = row == null ? createNode(node, keepIds ? node.id : undefined).id : node.id;
       if (row != null && !sameNode(toNode(row), node)) updateNode(id, node);
       nodeIds.set(node.id, id);
       placeNode(graphId, id, node.position, false);
@@ -700,7 +701,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     const appliedEdges = edges.map((edge) => {
       const input = { ...edge, source: nodeIds.get(edge.source) ?? edge.source, target: nodeIds.get(edge.target) ?? edge.target };
       const row = edgeById.get({ id: edge.id });
-      const id = row == null ? createEdge(input).id : edge.id;
+      const id = row == null ? createEdge(input, keepIds ? edge.id : undefined).id : edge.id;
       if (row != null && !sameEdge(toEdge(row), input)) updateEdge(id, input);
       includeEdge(graphId, id);
       return { ...input, id };
@@ -708,10 +709,25 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     const keptEdges = new Set(appliedEdges.map(({ id }) => id));
     for (const edge of view(graphId).edges) if (!keptEdges.has(edge.id)) detachEdge(graphId, edge.id);
     touchGraph(graphId);
-    const appliedContent = { graph, nodes: nodes.map((node) => ({ ...node, id: nodeIds.get(node.id) ?? node.id })), edges: appliedEdges };
+    return { graph, nodes: nodes.map((node) => ({ ...node, id: nodeIds.get(node.id) ?? node.id })), edges: appliedEdges };
+  };
+
+  const applyProposal = db.transaction((graphId: string, proposalId: string, andPublish: boolean) => {
+    const appliedContent = applyContent(graphId, toProposal(requireOpenProposal(graphId, proposalId)).content, false);
     db.query("UPDATE proposals SET content = $content WHERE id = $id").run({ id: proposalId, content: JSON.stringify(appliedContent) });
     setStatus(proposalId, "applied");
     return { proposal: toProposal(requireProposal(graphId, proposalId)), version: andPublish ? publish(graphId) : null };
+  });
+
+  // Puts the draft back to an earlier state that the editor kept, for undo and redo: its content, its positions and its
+  // edge routes.
+  const restoreDraft = db.transaction((graphId: string, { content, routes }: DraftState): GraphView => {
+    requireGraph(graphId);
+    applyContent(graphId, content, true);
+    db.query("UPDATE graph_edges SET route = NULL WHERE graph_id = $graphId").run({ graphId });
+    const setRoute = db.query("UPDATE graph_edges SET route = $route WHERE graph_id = $graphId AND edge_id = $edgeId");
+    for (const [edgeId, points] of Object.entries(routes)) setRoute.run({ graphId, edgeId, route: JSON.stringify(points) });
+    return view(graphId);
   });
 
   const diffProposal = (graphId: string, proposalId: string, against: number | "latest" | "draft") => {
@@ -868,6 +884,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     reviseProposal,
     discardProposal,
     applyProposal,
+    restoreDraft,
     diffProposal,
 
     close: () => db.close(),

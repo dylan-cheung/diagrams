@@ -134,6 +134,9 @@ export const Guide = () => {
                 Click <b>Auto layout</b> to place the nodes. Use <b>Horizontal</b> or <b>Vertical</b> to set the flow direction.
               </li>
               <li>
+                Try changes freely. Press ⌘Z (Ctrl+Z) to undo and ⇧⌘Z (Ctrl+Shift+Z) to redo, or go back to any change in the <b>History</b> list of the panel.
+              </li>
+              <li>
                 Click <b>Publish</b>. This saves a version that does not change. Apps that run the graph use a published version.
               </li>
               <li>

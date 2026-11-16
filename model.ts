@@ -4,6 +4,7 @@ export type {
   ChangeStatus,
   ContentEdge,
   ContentNode,
+  DraftState,
   EdgeChange,
   EdgeInput,
   FieldChange,

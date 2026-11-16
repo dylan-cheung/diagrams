@@ -3,6 +3,7 @@ import type { ContentEdge, ContentNode, GraphContent, GraphVersionSummary, Prope
 import { termName } from "../vocabulary.ts";
 import type { Selection } from "./canvas.tsx";
 import { localTime } from "./graph-list.tsx";
+import type { History } from "./history.ts";
 import { Link } from "./router.tsx";
 import { useVocabulary } from "./vocabulary.ts";
 
@@ -184,3 +185,46 @@ export const VersionPanel = ({
     </>
   );
 };
+
+// The changes made to the draft in this session, newest first. Click a change to go back to the state just after it.
+export const HistorySection = ({
+  history,
+  undoKey,
+  redoKey,
+  disabled,
+  onGo,
+}: {
+  history: History;
+  undoKey: string;
+  redoKey: string;
+  disabled: boolean;
+  onGo: (index: number) => void;
+}) => (
+  <section className="section">
+    <h2>History</h2>
+    <p className="hint">
+      The changes in this session. Undo with {undoKey} and redo with {redoKey}, or click a change to go back to it.
+    </p>
+    {history.entries.length === 0 ? (
+      <p className="meta">No changes yet.</p>
+    ) : (
+      <ol className="history">
+        {history.entries
+          .map((entry, i) => ({ entry, after: i + 1 }))
+          .reverse()
+          .map(({ entry, after }) => (
+            <li key={after} className={after > history.index ? "undone" : after === history.index ? "current" : ""}>
+              <button type="button" className="link" disabled={disabled || after === history.index} onClick={() => onGo(after)}>
+                {entry.label}
+              </button>
+            </li>
+          ))}
+        <li className={history.index === 0 ? "current" : ""}>
+          <button type="button" className="link" disabled={disabled || history.index === 0} onClick={() => onGo(0)}>
+            Start of this session
+          </button>
+        </li>
+      </ol>
+    )}
+  </section>
+);

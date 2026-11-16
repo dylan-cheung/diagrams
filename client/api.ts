@@ -1,6 +1,6 @@
 import { hc, type ClientResponse } from "hono/client";
 import type { AppType } from "../api.ts";
-import type { EdgeInput, GraphInput, GraphPatch, LayoutInput, NodeInput, Position } from "../model.ts";
+import type { DraftState, EdgeInput, GraphInput, GraphPatch, LayoutInput, NodeInput, Position } from "../model.ts";
 
 export class ApiError extends Error {
   constructor(readonly errors: string[]) {
@@ -55,6 +55,7 @@ export const api = {
     unwrap(graphs[":id"].nodes[":nodeId"].$delete({ param: { id, nodeId } })),
   moveNodes: (id: string, positions: Record<string, Position>) =>
     unwrap(graphs[":id"].positions.$put({ param: { id }, json: positions })),
+  restoreDraft: (id: string, state: DraftState) => unwrap(graphs[":id"].draft.$put({ param: { id }, json: state })),
   setLayout: (id: string, layout: LayoutInput) => unwrap(graphs[":id"].layout.$put({ param: { id }, json: layout })),
   createEdgeInGraph: (id: string, input: EdgeInput) => unwrap(graphs[":id"].edges.$post({ param: { id }, json: input })),
   removeEdgeFromGraph: (id: string, edgeId: string) =>

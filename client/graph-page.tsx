@@ -10,7 +10,8 @@ import { ProposalReview } from "./review.tsx";
 import { go, Link, type Route } from "./router.tsx";
 import { termName } from "../vocabulary.ts";
 import { useVocabulary } from "./vocabulary.ts";
-import { GraphSections, VersionPanel, type Shown } from "./view-panel.tsx";
+import { EMPTY_HISTORY, movedTo, recordChange, snapshotOf, stateAt, type History } from "./history.ts";
+import { GraphSections, HistorySection, VersionPanel, type Shown } from "./view-panel.tsx";
 
 type GraphRoute = Exclude<Route, { page: "list" } | { page: "guide" }>;
 
@@ -31,6 +32,10 @@ const alignTo = (content: GraphContent, layout: Map<string, Position | null>): G
   nodes: content.nodes.map((node) => ({ ...node, position: layout.get(node.id) ?? node.position })),
 });
 
+const MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const UNDO_KEY = MAC ? "⌘Z" : "Ctrl+Z";
+const REDO_KEY = MAC ? "⇧⌘Z" : "Ctrl+Shift+Z";
+
 const errorsOf = (error: unknown) => (error instanceof ApiError ? error.errors : [(error as Error).message]);
 
 export const GraphPage = ({ route }: { route: GraphRoute }) => {
@@ -48,6 +53,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
   // The number of changes that are on their way to the server. Every change saves at once, so the draft is saved when
   // this is 0.
   const [saving, setSaving] = useState(0);
+  const [history, setHistory] = useState<History>(EMPTY_HISTORY);
   const vocabulary = useVocabulary();
 
   const loadDraft = useCallback(async () => {
@@ -136,29 +142,87 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     if (!items.some(({ id }) => id === selection.id)) setSelection(null);
   }, [content, selection]);
 
+  const nodeName = (id: string) => draft?.nodes.find((node) => node.id === id)?.name ?? "node";
+  const edgeName = (id: string) => {
+    const edge = draft?.edges.find((item) => item.id === id);
+    if (edge == null) return "edge";
+    const text = edgeText(edge, vocabulary);
+    return text !== "" ? `edge "${text}"` : `edge ${nodeName(edge.source)} → ${nodeName(edge.target)}`;
+  };
+
+  // Makes one change to the draft and records it in the undo history.
+  const change = async <T,>(label: string, action: () => Promise<T>) => {
+    const before = draft == null ? null : snapshotOf(draft);
+    let done = false;
+    const result = await run(async () => {
+      const value = await action();
+      done = true;
+      return value;
+    });
+    if (done && before != null) setHistory((current) => recordChange(current, label, before));
+    return result;
+  };
+
+  // Puts the draft back to the state after the first `index` changes of the history: undo, redo, or a jump in the list.
+  const goToHistory = async (index: number) => {
+    if (draft == null || readOnly || saving > 0 || index === history.index) return;
+    const current = snapshotOf(draft);
+    const target = stateAt(history, index, current);
+    if (target == null) return;
+    let done = false;
+    await run(async () => {
+      await api.restoreDraft(graphId, target);
+      done = true;
+    });
+    if (done) setHistory(movedTo(history, index, current));
+  };
+  const undo = () => void goToHistory(history.index - 1);
+  const redo = () => void goToHistory(history.index + 1);
+  const canUndo = !readOnly && history.index > 0;
+  const canRedo = !readOnly && history.index < history.entries.length;
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      const isRedo = (key === "z" && event.shiftKey) || (key === "y" && !event.shiftKey);
+      if (key !== "z" && !isRedo) return;
+      const target = event.target as HTMLElement | null;
+      // Text fields keep their own undo for the text you type.
+      if (target != null && (target.closest("input, textarea, select") != null || target.isContentEditable)) return;
+      event.preventDefault();
+      if (isRedo) redo();
+      else undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   const actions: InspectorActions = {
-    updateGraph: (patch) => void run(() => api.updateGraph(graphId, patch)),
+    updateGraph: (patch) => void change(patch.name != null ? "Rename the graph" : "Edit the graph purpose", () => api.updateGraph(graphId, patch)),
     deleteGraph: () => {
       api
         .deleteGraph(graphId)
         .then(() => go({ page: "list" }))
         .catch((error: unknown) => setErrors(errorsOf(error)));
     },
-    updateNode: (id, patch) => void run(() => api.updateNode(id, patch)),
-    removeNodeFromGraph: (id) => void run(() => api.removeNodeFromGraph(graphId, id)),
-    updateEdge: (id, patch) => void run(() => api.updateEdge(id, patch)),
-    removeEdgeFromGraph: (id) => void run(() => api.removeEdgeFromGraph(graphId, id)),
+    updateNode: (id, patch) =>
+      void change(patch.name != null ? `Rename "${nodeName(id)}" to "${patch.name}"` : `Edit "${nodeName(id)}"`, () => api.updateNode(id, patch)),
+    removeNodeFromGraph: (id) => void change(`Delete "${nodeName(id)}"`, () => api.removeNodeFromGraph(graphId, id)),
+    updateEdge: (id, patch) => void change(`Edit ${edgeName(id)}`, () => api.updateEdge(id, patch)),
+    removeEdgeFromGraph: (id) => void change(`Delete ${edgeName(id)}`, () => api.removeEdgeFromGraph(graphId, id)),
   };
 
   const addNode = async (type: string | null, position: Position) => {
     const name = `New ${(termName(vocabulary.nodeTypes, type) ?? "node").toLowerCase()}`;
-    const node = await run(() => api.createNodeInGraph(graphId, { name, type }, position));
+    const node = await change(`Add "${name}"`, () => api.createNodeInGraph(graphId, { name, type }, position));
     if (node != null) setSelection({ kind: "node", id: node.id });
   };
 
   const relayout = (direction: LayoutDirection) => {
     if (draft == null) return;
-    void run(async () => {
+    const label = direction === draft.graph.direction ? "Auto layout" : `Change to the ${direction} layout`;
+    void change(label, async () => {
       if (direction !== draft.graph.direction) await api.updateGraph(graphId, { direction });
       await api.setLayout(graphId, await autoLayout(draft.nodes, draft.edges, false, direction, (edge) => edgeText(edge, vocabulary)));
     });
@@ -173,24 +237,32 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
 
   const move = (positions: Record<string, Position>) => {
     if (draft == null) return;
+    const ids = Object.keys(positions);
+    const label = ids.length === 1 ? `Move "${nodeName(ids[0] ?? "")}"` : `Move ${ids.length} nodes`;
+    const before = snapshotOf(draft);
     setDraft(withPositions(draft, positions));
     setSaving((count) => count + 1);
     api
       .moveNodes(graphId, positions)
+      .then(() => setHistory((current) => recordChange(current, label, before)))
       .catch((error: unknown) => setErrors(errorsOf(error)))
       .finally(() => setSaving((count) => count - 1));
   };
 
   const connect = async (source: string, target: string) => {
-    const edge = await run(() => api.createEdgeInGraph(graphId, { source, target }));
+    const edge = await change(`Add edge ${nodeName(source)} → ${nodeName(target)}`, () => api.createEdgeInGraph(graphId, { source, target }));
     if (edge != null) setSelection({ kind: "edge", id: edge.id });
   };
 
-  const remove = (nodeIds: string[], edgeIds: string[]) =>
-    void run(async () => {
+  const remove = (nodeIds: string[], edgeIds: string[]) => {
+    const count = nodeIds.length + edgeIds.length;
+    const label =
+      count !== 1 ? `Delete ${count} items` : nodeIds[0] != null ? `Delete "${nodeName(nodeIds[0])}"` : `Delete ${edgeName(edgeIds[0] ?? "")}`;
+    void change(label, async () => {
       for (const edgeId of edgeIds) await api.removeEdgeFromGraph(graphId, edgeId);
       for (const nodeId of nodeIds) await api.removeNodeFromGraph(graphId, nodeId);
     });
+  };
 
   const status =
     saving > 0
@@ -248,6 +320,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
             draft={draft}
             onClose={() => go({ page: "graph", graphId })}
             onApplied={(message) => {
+              setHistory(EMPTY_HISTORY);
               go({ page: "graph", graphId });
               void refresh().then(() => setNotice(message));
             }}
@@ -261,6 +334,14 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
       <header className="toolbar">
         {toolbarStart}
         <span className="spacer" />
+        <div className="tabs" role="group" aria-label="History">
+          <button type="button" onClick={undo} disabled={!canUndo || saving > 0} aria-label="Undo" title={`Undo${canUndo ? `: ${history.entries[history.index - 1]?.label ?? ""}` : ""} (${UNDO_KEY})`}>
+            ↶
+          </button>
+          <button type="button" onClick={redo} disabled={!canRedo || saving > 0} aria-label="Redo" title={`Redo${canRedo ? `: ${history.entries[history.index]?.label ?? ""}` : ""} (${REDO_KEY})`}>
+            ↷
+          </button>
+        </div>
         <button type="button" onClick={() => relayout(draft?.graph.direction ?? "horizontal")} disabled={draft == null || readOnly || draft.nodes.length === 0}>
           Auto layout
         </button>
@@ -349,7 +430,12 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
           {!readOnly && draft != null && (
             <>
               <Inspector view={draft} selection={selection} actions={actions} />
-              {selection == null && sections}
+              {selection == null && (
+                <>
+                  <HistorySection history={history} undoKey={UNDO_KEY} redoKey={REDO_KEY} onGo={(index) => void goToHistory(index)} disabled={saving > 0} />
+                  {sections}
+                </>
+              )}
             </>
           )}
           {readOnly && viewContent != null && (

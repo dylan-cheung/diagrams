@@ -6,7 +6,7 @@ import type { FlowStep, GraphContent, GraphEdge, GraphSummary, GraphVersion, Gra
 import { ApiError, api } from "./api.ts";
 import { edgeText, GraphCanvas, type Selection } from "./canvas.tsx";
 import { FlowPanel, FlowsSection, pathOf, type FlowActions } from "./flow-panel.tsx";
-import { GraphFooter, Inspector, type InspectorActions } from "./inspector.tsx";
+import { GraphFooter, GraphTitle, Inspector, type InspectorActions } from "./inspector.tsx";
 import { MenuButton } from "./menu.tsx";
 import { ProposalReview } from "./review.tsx";
 import { go, Link, type Route } from "./router.tsx";
@@ -455,7 +455,11 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
                   <Link className="back" to={{ page: "list" }} aria-label="Back to graphs" title="Back to graphs">
                     ←
                   </Link>
-                  <h1 title={draft?.graph.name}>{draft?.graph.name ?? ""}</h1>
+                  {readOnly || draft == null ? (
+                    <h1 title={draft?.graph.name}>{draft?.graph.name ?? ""}</h1>
+                  ) : (
+                    <GraphTitle name={draft.graph.name} onRename={(name) => actions.updateGraph({ name })} />
+                  )}
                   <MenuButton
                     label="Graph actions"
                     icon={

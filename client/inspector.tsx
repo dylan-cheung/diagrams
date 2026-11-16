@@ -129,28 +129,35 @@ const EdgeInspector = ({ edge, view, actions }: { edge: GraphEdge; view: GraphVi
 
 const NO_FILL = { autoComplete: "off", "data-1p-ignore": true, "data-lpignore": "true", "data-bwignore": true, "data-form-type": "other" } as const;
 
+// The graph name as a title that you can click to edit. An empty name goes back to the saved name.
+export const GraphTitle = ({ name: saved, onRename }: { name: string; onRename: (name: string) => void }) => {
+  const [name, setName] = useState(saved);
+  useEffect(() => setName(saved), [saved]);
+  return (
+    <input
+      className="title-input"
+      aria-label="Graph name"
+      title={saved}
+      value={name}
+      onChange={(e) => setName(e.target.value)}
+      onBlur={() => {
+        if (name.trim() !== "" && name !== saved) onRename(name);
+        else setName(saved);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") setName(saved);
+      }}
+      {...NO_FILL}
+    />
+  );
+};
+
 const GraphInspector = ({ view, actions }: { view: GraphView; actions: InspectorActions }) => {
-  const [name, setName] = useState(view.graph.name);
   const [purpose, setPurpose] = useState(view.graph.description);
-  useEffect(() => setName(view.graph.name), [view.graph.name]);
   useEffect(() => setPurpose(view.graph.description), [view.graph.description]);
   return (
     <section className="section graph-head">
-      <input
-        className="title-input"
-        aria-label="Graph name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onBlur={() => {
-          if (name.trim() !== "" && name !== view.graph.name) actions.updateGraph({ name });
-          else setName(view.graph.name);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-          if (e.key === "Escape") setName(view.graph.name);
-        }}
-        {...NO_FILL}
-      />
       <textarea
         className="purpose-input"
         aria-label="Purpose"

@@ -1,10 +1,11 @@
 import { Panel, ReactFlowProvider } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toContent } from "../diff.ts";
 import { autoLayout } from "../layout.ts";
-import type { GraphContent, GraphSummary, GraphVersion, GraphVersionSummary, GraphView, LayoutDirection, Position, ProposalSummary } from "../model.ts";
+import type { FlowStep, GraphContent, GraphEdge, GraphSummary, GraphVersion, GraphVersionSummary, GraphView, LayoutDirection, Position, ProposalSummary } from "../model.ts";
 import { ApiError, api } from "./api.ts";
 import { edgeText, GraphCanvas, type Selection } from "./canvas.tsx";
+import { FlowPanel, FlowsSection, pathOf, type FlowActions } from "./flow-panel.tsx";
 import { Inspector, type InspectorActions } from "./inspector.tsx";
 import { ProposalReview } from "./review.tsx";
 import { go, Link, type Route } from "./router.tsx";
@@ -32,6 +33,9 @@ const alignTo = (content: GraphContent, layout: Map<string, Position | null>): G
   nodes: content.nodes.map((node) => ({ ...node, position: layout.get(node.id) ?? node.position })),
 });
 
+const goesFrom = (edge: GraphEdge, from: string, to: string) =>
+  (edge.source === from && edge.target === to) || (!edge.directed && edge.source === to && edge.target === from);
+
 const MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const UNDO_KEY = MAC ? "⌘Z" : "Ctrl+Z";
 const REDO_KEY = MAC ? "⇧⌘Z" : "Ctrl+Shift+Z";
@@ -48,6 +52,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
   const [picked, setPicked] = useState<Shown | null>(null);
   const [loadedVersions, setLoadedVersions] = useState<Record<number, GraphVersion>>({});
   const [selection, setSelection] = useState<Selection>(null);
+  const [flowId, setFlowId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   // The number of changes that are on their way to the server. Every change saves at once, so the draft is saved when
@@ -141,6 +146,10 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     const items = selection.kind === "node" ? content.nodes : content.edges;
     if (!items.some(({ id }) => id === selection.id)) setSelection(null);
   }, [content, selection]);
+
+  const flows = (readOnly ? shownVersion?.view.flows : draft?.flows) ?? [];
+  const flow = flows.find(({ id }) => id === flowId);
+  const path = useMemo(() => (flow == null ? undefined : pathOf(flow)), [flow]);
 
   const nodeName = (id: string) => draft?.nodes.find((node) => node.id === id)?.name ?? "node";
   const edgeName = (id: string) => {
@@ -264,6 +273,67 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     });
   };
 
+  const openFlow = (id: string) => {
+    setSelection(null);
+    setFlowId(id);
+  };
+
+  const createFlow = async (name: string) => {
+    const created = await run(() => api.createFlow(graphId, { name }));
+    if (created != null) openFlow(created.id);
+  };
+
+  const saveSteps = (steps: FlowStep[]) => {
+    if (flow != null) void run(() => api.updateFlow(graphId, flow.id, { steps }));
+  };
+
+  const flowActions: FlowActions = {
+    update: (patch) => {
+      if (flow != null) void run(() => api.updateFlow(graphId, flow.id, patch));
+    },
+    truncate: (length) => saveSteps(flow?.steps.slice(0, length) ?? []),
+    remove: () => {
+      if (flow != null) void run(() => api.deleteFlow(graphId, flow.id)).then(() => setFlowId(null));
+    },
+    close: () => setFlowId(null),
+  };
+
+  // The steps of the open flow with one more step for a click on a node or an edge, or why the click cannot add one.
+  const nextSteps = (steps: FlowStep[], clicked: NonNullable<Selection>): FlowStep[] | string => {
+    const edges = draft?.edges ?? [];
+    const last = steps.at(-1)?.nodeId;
+    if (clicked.kind === "node") {
+      if (last == null) return [{ nodeId: clicked.id, edgeId: null }];
+      const found = edges.filter((edge) => goesFrom(edge, last, clicked.id));
+      if (found.length === 0) return `No edge goes from "${nodeName(last)}" to "${nodeName(clicked.id)}".`;
+      if (found.length > 1) return `More than one edge goes from "${nodeName(last)}" to "${nodeName(clicked.id)}". Click the edge to follow.`;
+      return [...steps, { nodeId: clicked.id, edgeId: found[0]?.id ?? null }];
+    }
+    const edge = edges.find(({ id }) => id === clicked.id);
+    if (edge == null) return [];
+    if (last == null) return [{ nodeId: edge.source, edgeId: null }, { nodeId: edge.target, edgeId: edge.id }];
+    const to = goesFrom(edge, last, edge.target) ? edge.target : goesFrom(edge, last, edge.source) ? edge.source : null;
+    if (to == null) return `The edge does not start at "${nodeName(last)}".`;
+    return [...steps, { nodeId: to, edgeId: edge.id }];
+  };
+
+  // While a flow is open in the draft, a click on the canvas adds a step instead of a selection.
+  const select = (next: Selection) => {
+    if (flow == null) {
+      setSelection(next);
+    } else if (readOnly) {
+      setFlowId(null);
+      setSelection(next);
+    } else if (next != null) {
+      const steps = nextSteps(flow.steps, next);
+      if (typeof steps === "string") setErrors([steps]);
+      else saveSteps(steps);
+    }
+  };
+  const selectRef = useRef(select);
+  selectRef.current = select;
+  const onSelect = useCallback((next: Selection) => selectRef.current(next), []);
+
   const status =
     saving > 0
       ? "Saving…"
@@ -378,7 +448,8 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
                 view={content}
                 routes={routes}
                 selection={selection}
-                onSelect={setSelection}
+                onSelect={onSelect}
+                path={path}
                 onMove={move}
                 onConnect={(source, target) => void connect(source, target)}
                 onRemove={remove}
@@ -449,19 +520,22 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
           )}
         </main>
         <aside className="inspector">
-          {!readOnly && draft != null && (
+          {flow != null && content != null && <FlowPanel flow={flow} content={content} readOnly={readOnly} actions={flowActions} />}
+          {flow == null && !readOnly && draft != null && draftContent != null && (
             <>
               <Inspector view={draft} selection={selection} actions={actions} />
               {selection == null && (
                 <>
+                  <FlowsSection flows={flows} content={draftContent} onOpen={openFlow} onCreate={(name) => void createFlow(name)} />
                   <HistorySection history={history} undoKey={UNDO_KEY} redoKey={REDO_KEY} onGo={(index) => void goToHistory(index)} disabled={saving > 0} />
                   {sections}
                 </>
               )}
             </>
           )}
-          {readOnly && viewContent != null && (
+          {flow == null && readOnly && viewContent != null && (
             <VersionPanel graphId={graphId} content={viewContent} selection={selection} onSelect={setSelection}>
+              <FlowsSection flows={flows} content={viewContent} onOpen={openFlow} />
               {sections}
             </VersionPanel>
           )}

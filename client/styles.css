@@ -713,6 +713,7 @@ button.add {
 }
 
 .entity {
+  position: relative;
   border: 1px solid var(--line);
   border-left: 4px solid var(--type-color, var(--line));
   border-radius: 8px;
@@ -861,6 +862,70 @@ button.add {
 
 .edge-label {
   cursor: pointer;
+}
+
+.step-badge {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+.entity.on-path {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.entity.off-path,
+.react-flow__edge-path.off-path,
+.edge-label.off-path {
+  opacity: 0.3;
+}
+
+.react-flow__edge-path.on-path {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.edge-label.on-path {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.flow-steps {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 4px;
+}
+
+.flow-steps li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.flow-steps .broken {
+  color: var(--danger);
+}
+
+.flow-new {
+  display: flex;
+  gap: 6px;
+}
+
+.flow-new input {
+  flex: 1;
+  min-width: 0;
 }
 
 .edge-label.edge-hovered {

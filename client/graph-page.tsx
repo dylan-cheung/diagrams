@@ -4,10 +4,11 @@ import { toContent } from "../diff.ts";
 import { autoLayout } from "../layout.ts";
 import type { GraphContent, GraphSummary, GraphVersion, GraphVersionSummary, GraphView, LayoutDirection, Position, ProposalSummary } from "../model.ts";
 import { ApiError, api } from "./api.ts";
-import { GraphCanvas, type Selection } from "./canvas.tsx";
+import { edgeText, GraphCanvas, type Selection } from "./canvas.tsx";
 import { Inspector, type InspectorActions } from "./inspector.tsx";
 import { ProposalReview } from "./review.tsx";
 import { go, Link, type Mode, type Route } from "./router.tsx";
+import { useVocabulary } from "./vocabulary.ts";
 import { ViewPanel, type Shown } from "./view-panel.tsx";
 
 type GraphRoute = Exclude<Route, { page: "list" } | { page: "guide" }>;
@@ -47,14 +48,15 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
   const [selection, setSelection] = useState<Selection>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
+  const vocabulary = useVocabulary();
 
   const loadDraft = useCallback(async () => {
     const next = await api.view(graphId);
     if (!next.nodes.some(({ position }) => position == null)) return next;
-    const positions = autoLayout(next.nodes, next.edges, true, next.graph.direction);
+    const positions = autoLayout(next.nodes, next.edges, true, next.graph.direction, (edge) => edgeText(edge, vocabulary));
     await api.moveNodes(graphId, positions);
     return withPositions(next, positions);
-  }, [graphId]);
+  }, [graphId, vocabulary]);
 
   const refresh = useCallback(async () => {
     const [nextDraft, nextVersions, nextProposals, graphs] = await Promise.all([
@@ -141,7 +143,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     if (draft == null) return;
     void run(async () => {
       if (direction !== draft.graph.direction) await api.updateGraph(graphId, { direction });
-      await api.moveNodes(graphId, autoLayout(draft.nodes, draft.edges, false, direction));
+      await api.moveNodes(graphId, autoLayout(draft.nodes, draft.edges, false, direction, (edge) => edgeText(edge, vocabulary)));
     });
   };
 

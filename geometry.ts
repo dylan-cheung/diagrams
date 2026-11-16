@@ -60,3 +60,43 @@ export const assignParallelSlots = (edges: { id: string; source: string; target:
   for (const ids of groups.values()) ids.forEach((id, index) => slots.set(id, { index, count: ids.length }));
   return slots;
 };
+
+// Edge labels are 11px text in a pill. These estimates are a little wide, so a label does not touch the next one.
+export const LABEL_HEIGHT = 18;
+const LABEL_GAP = 4;
+
+export const labelSize = (text: string) => ({ width: Math.ceil(text.length * 6.6) + 16, height: LABEL_HEIGHT });
+
+export type Label = { id: string; at: Point; width: number; height: number };
+
+const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+const boxAt = ({ at, width, height }: Label, dy: number): Box => ({
+  x: at.x - width / 2 - LABEL_GAP / 2,
+  y: at.y + dy - height / 2 - LABEL_GAP / 2,
+  width: width + LABEL_GAP,
+  height: height + LABEL_GAP,
+});
+
+// Moves each label up or down from its place on the edge, in steps of one label height, to the nearest place that
+// does not cover a node or a label placed before it. A label that finds no free place stays where it is.
+export const placeLabels = (labels: Label[], nodes: Box[], maxSteps = 12) => {
+  const taken: Box[] = [];
+  const placed = new Map<string, Point>();
+  const order = [...labels].sort((a, b) => a.at.y - b.at.y || a.at.x - b.at.x || a.id.localeCompare(b.id));
+  for (const label of order) {
+    const step = label.height + LABEL_GAP;
+    let dy = 0;
+    for (let i = 0; i <= maxSteps * 2; i++) {
+      const candidate = (i % 2 === 1 ? 1 : -1) * Math.ceil(i / 2) * step;
+      const box = boxAt(label, candidate);
+      if (!nodes.some((node) => overlaps(box, node)) && !taken.some((other) => overlaps(box, other))) {
+        dy = candidate;
+        break;
+      }
+    }
+    taken.push(boxAt(label, dy));
+    placed.set(label.id, { x: label.at.x, y: label.at.y + dy });
+  }
+  return placed;
+};

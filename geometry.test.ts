@@ -1,8 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { assignParallelSlots, edgePath, parallelOffset, sideAnchor } from "./geometry.ts";
+import { assignParallelSlots, edgePath, parallelOffset, placeLabels, sideAnchor } from "./geometry.ts";
 import { parsePropertyValue } from "./model.ts";
 
 describe("geometry", () => {
+  test("moves labels so that they do not cover each other or a node", () => {
+    const at = { x: 100, y: 100 };
+    const nodes = [{ x: 0, y: 0, width: 200, height: 60 }];
+    const labels = ["a", "b", "c"].map((id) => ({ id, at, width: 120, height: 18 }));
+    const placed = placeLabels(labels, nodes);
+    const ys = labels.map(({ id }) => placed.get(id)?.y ?? 0).sort((a, b) => a - b);
+    expect(new Set(ys).size).toBe(3);
+    for (let i = 1; i < ys.length; i++) expect((ys[i] ?? 0) - (ys[i - 1] ?? 0)).toBeGreaterThanOrEqual(18);
+    for (const y of ys) expect(y - 9).toBeGreaterThanOrEqual(60);
+  });
+
   test("anchors an edge at the center of the box side that faces the other node", () => {
     const box = { x: 0, y: 0, width: 100, height: 50 };
     expect(sideAnchor(box, { x: 500, y: 200 })).toEqual({ x: 100, y: 25 });

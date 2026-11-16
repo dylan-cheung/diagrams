@@ -17,9 +17,9 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import { useEffect, useMemo, type ReactNode } from "react";
-import { assignParallelSlots, edgePath, loopPath, type Box, type ParallelSlot } from "../geometry.ts";
+import { assignParallelSlots, edgePath, labelSize, loopPath, placeLabels, type Box, type Label, type ParallelSlot, type Point } from "../geometry.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
-import type { ChangeStatus, GraphContent, Position, Vocabulary } from "../model.ts";
+import type { ChangeStatus, ContentEdge, GraphContent, Position, Vocabulary } from "../model.ts";
 import { termName } from "../vocabulary.ts";
 import { useVocabulary } from "./vocabulary.ts";
 
@@ -29,7 +29,7 @@ export type Marks = { nodes: Map<string, ChangeStatus>; edges: Map<string, Chang
 
 type Design = { type: string | null; status: string | null };
 type EntityNode = Node<Design & { name: string; labels: string[]; mark: ChangeStatus | undefined }, "entity">;
-type FloatingEdge = Edge<Design & { slot: ParallelSlot; flip: boolean; mark: ChangeStatus | undefined }, "floating">;
+type FloatingEdge = Edge<Design & { slot: ParallelSlot; flip: boolean; mark: ChangeStatus | undefined; labelAt: Point | undefined }, "floating">;
 
 const markClass = (mark: ChangeStatus | undefined) => (mark == null ? "" : ` mark-${mark}`);
 
@@ -95,7 +95,7 @@ const FloatingEdgeView = ({ id, source, target, data, label, markerEnd, selected
         <EdgeLabelRenderer>
           <div
             className={`edge-label${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}`}
-            style={{ transform: `translate(-50%, -50%) translate(${geometry.label.x}px, ${geometry.label.y}px)` }}
+            style={{ transform: `translate(-50%, -50%) translate(${(data.labelAt ?? geometry.label).x}px, ${(data.labelAt ?? geometry.label).y}px)` }}
           >
             {label}
           </div>
@@ -119,8 +119,35 @@ const toFlowNodes = (view: GraphContent, selection: Selection, marks: Marks | un
     selected: selection?.kind === "node" && selection.id === node.id,
   }));
 
-const toFlowEdges = (view: GraphContent, vocabulary: Vocabulary, selection: Selection, marks: Marks | undefined): FloatingEdge[] => {
+export const edgeText = (edge: Pick<ContentEdge, "label" | "type">, vocabulary: Vocabulary) =>
+  edge.label !== "" ? edge.label : (termName(vocabulary.relationshipTypes, edge.type ?? null) ?? "");
+
+const boxOf = (node: EntityNode): Box => ({
+  x: node.position.x,
+  y: node.position.y,
+  width: node.measured?.width ?? NODE_WIDTH,
+  height: node.measured?.height ?? NODE_HEIGHT,
+});
+
+// Places the labels with the current node positions, so that no label covers a node or another label.
+const labelPlaces = (view: GraphContent, nodes: EntityNode[], vocabulary: Vocabulary, slots: Map<string, ParallelSlot>) => {
+  const boxes = new Map(nodes.map((node) => [node.id, boxOf(node)]));
+  const labels: Label[] = [];
+  for (const edge of view.edges) {
+    const text = edgeText(edge, vocabulary);
+    const source = boxes.get(edge.source);
+    const target = boxes.get(edge.target);
+    if (text === "" || source == null || target == null) continue;
+    const slot = slots.get(edge.id) ?? { index: 0, count: 1 };
+    const at = edge.source === edge.target ? loopPath(source, slot).label : edgePath(source, target, slot, edge.source > edge.target).label;
+    labels.push({ id: edge.id, at, ...labelSize(text) });
+  }
+  return placeLabels(labels, [...boxes.values()]);
+};
+
+const toFlowEdges = (view: GraphContent, nodes: EntityNode[], vocabulary: Vocabulary, selection: Selection, marks: Marks | undefined): FloatingEdge[] => {
   const slots = assignParallelSlots(view.edges);
+  const places = labelPlaces(view, nodes, vocabulary, slots);
   return view.edges.map((edge) => ({
     id: edge.id,
     type: "floating",
@@ -128,7 +155,7 @@ const toFlowEdges = (view: GraphContent, vocabulary: Vocabulary, selection: Sele
     target: edge.target,
     sourceHandle: "right",
     targetHandle: "left",
-    label: edge.label !== "" ? edge.label : (termName(vocabulary.relationshipTypes, edge.type) ?? ""),
+    label: edgeText(edge, vocabulary),
     markerEnd: edge.directed ? { type: MarkerType.ArrowClosed, width: 18, height: 18 } : undefined,
     data: {
       slot: slots.get(edge.id) ?? { index: 0, count: 1 },
@@ -136,6 +163,7 @@ const toFlowEdges = (view: GraphContent, vocabulary: Vocabulary, selection: Sele
       type: edge.type,
       status: edge.status,
       mark: marks?.edges.get(edge.id),
+      labelAt: places.get(edge.id),
     },
     selected: selection?.kind === "edge" && selection.id === edge.id,
   }));
@@ -165,7 +193,7 @@ export const GraphCanvas = ({
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityNode>(toFlowNodes(view, selection, marks));
   useEffect(() => setNodes(toFlowNodes(view, selection, marks)), [view, selection, marks, setNodes]);
   const vocabulary = useVocabulary();
-  const edges = useMemo(() => toFlowEdges(view, vocabulary, selection, marks), [view, vocabulary, selection, marks]);
+  const edges = useMemo(() => toFlowEdges(view, nodes, vocabulary, selection, marks), [view, nodes, vocabulary, selection, marks]);
 
   return (
     <ReactFlow

@@ -115,8 +115,17 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     [shownVersion, draftContent, layout],
   );
   const content = mode === "edit" ? draftContent : viewContent;
-  // The saved edge routes belong to the draft positions, so the canvas uses them only when it shows the draft.
-  const routes = useMemo(() => new Map((draft?.edges ?? []).flatMap(({ id, route }) => (route == null ? [] : [[id, route] as const]))), [draft]);
+  // The saved edge routes belong to the draft. A shown version uses the draft positions, so it uses the route of each edge
+  // that connects the same two nodes in the draft.
+  const routes = useMemo(() => {
+    const saved = new Map((draft?.edges ?? []).map((edge) => [edge.id, edge]));
+    return new Map(
+      (content?.edges ?? []).flatMap(({ id, source, target }) => {
+        const edge = saved.get(id);
+        return edge?.route != null && edge.source === source && edge.target === target ? [[id, edge.route] as const] : [];
+      }),
+    );
+  }, [draft, content]);
 
   useEffect(() => {
     if (selection == null || content == null) return;
@@ -303,7 +312,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
             <ReactFlowProvider>
               <GraphCanvas
                 view={content}
-                routes={content === draftContent ? routes : undefined}
+                routes={routes}
                 selection={selection}
                 onSelect={setSelection}
                 onMove={move}

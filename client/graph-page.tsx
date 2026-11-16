@@ -7,6 +7,7 @@ import { ApiError, api } from "./api.ts";
 import { edgeText, GraphCanvas, type Selection } from "./canvas.tsx";
 import { FlowPanel, FlowsSection, pathOf, type FlowActions } from "./flow-panel.tsx";
 import { GraphFooter, Inspector, type InspectorActions } from "./inspector.tsx";
+import { MenuButton } from "./menu.tsx";
 import { ProposalReview } from "./review.tsx";
 import { go, Link, type Route } from "./router.tsx";
 import { termName } from "../vocabulary.ts";
@@ -401,22 +402,6 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
 
   return (
     <div className="app">
-      <header className="toolbar">
-        {toolbarStart}
-        <span className="spacer" />
-        <button type="button" onClick={() => relayout(draft?.graph.direction ?? "horizontal")} disabled={draft == null || readOnly || draft.nodes.length === 0}>
-          Auto layout
-        </button>
-        <button
-          type="button"
-          className="primary"
-          onClick={() => void publish()}
-          disabled={summary == null || saving > 0 || (published != null && !summary.changed)}
-          title="Save the draft as a new version that does not change"
-        >
-          Publish
-        </button>
-      </header>
       {banner}
       <div className="body">
         <main className="canvas">
@@ -466,7 +451,40 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
                 }
                 readOnly={readOnly}
               >
+                <Panel position="top-left" className="floating-note title-panel">
+                  <Link className="back" to={{ page: "list" }} aria-label="Back to graphs" title="Back to graphs">
+                    ←
+                  </Link>
+                  <h1 title={draft?.graph.name}>{draft?.graph.name ?? ""}</h1>
+                  <MenuButton
+                    label="Graph actions"
+                    icon={
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+                        <circle cx="12" cy="5" r="1.8" />
+                        <circle cx="12" cy="12" r="1.8" />
+                        <circle cx="12" cy="19" r="1.8" />
+                      </svg>
+                    }
+                    items={[
+                      {
+                        label: "Delete graph",
+                        danger: true,
+                        onSelect: () => {
+                          if (confirm(`Delete the graph "${draft?.graph.name ?? ""}"? Its nodes and edges are deleted too.`)) actions.deleteGraph();
+                        },
+                      },
+                    ]}
+                  />
+                </Panel>
                 <Panel position="bottom-right" className="direction-panel">
+                  <button
+                    type="button"
+                    className="floating-button"
+                    onClick={() => relayout(draft?.graph.direction ?? "horizontal")}
+                    disabled={draft == null || readOnly || draft.nodes.length === 0}
+                  >
+                    Auto layout
+                  </button>
                   <div className="tabs" role="group" aria-label="Layout direction">
                     {DIRECTIONS.map((item) => (
                       <button
@@ -482,11 +500,22 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
                     ))}
                   </div>
                 </Panel>
-                {!readOnly && status !== "" && (
-                  <Panel position="top-right" className={`floating-note save-status${saving === 0 && summary?.changed === true ? " changed" : ""}`}>
-                    <span aria-live="polite">{status}</span>
-                  </Panel>
-                )}
+                <Panel position="top-right" className="floating-note publish-panel">
+                  {!readOnly && status !== "" && (
+                    <span className={`save-status${saving === 0 && summary?.changed === true ? " changed" : ""}`} aria-live="polite">
+                      {status}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => void publish()}
+                    disabled={summary == null || saving > 0 || (published != null && !summary.changed)}
+                    title="Save the draft as a new version that does not change"
+                  >
+                    Publish
+                  </button>
+                </Panel>
                 {readOnly && (
                   <Panel position="top-center" className="floating-note">
                     <span className="meta">Version {shown} is read-only. </span>
@@ -509,7 +538,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
                   <FlowsSection flows={flows} content={draftContent} onOpen={openFlow} onCreate={(name) => void createFlow(name)} />
                   {sections}
                   <HistorySection history={history} undoKey={UNDO_KEY} redoKey={REDO_KEY} onGo={(index) => void goToHistory(index)} disabled={saving > 0} />
-                  <GraphFooter view={draft} actions={actions} />
+                  <GraphFooter view={draft} />
                 </>
               )}
             </>

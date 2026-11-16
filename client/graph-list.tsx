@@ -3,6 +3,7 @@ import type { GraphSummary } from "../model.ts";
 import { ApiError, api } from "./api.ts";
 import { WALKTHROUGH_ID } from "../walkthrough.ts";
 import { AppNav } from "./app-nav.tsx";
+import { MenuButton } from "./menu.tsx";
 import { go, Link } from "./router.tsx";
 
 type SortKey = "name" | "published" | "nodeCount" | "openProposals" | "updatedAt";
@@ -84,24 +85,7 @@ const NewGraphDialog = ({ onClose }: { onClose: () => void }) => {
 };
 
 const RowActions = ({ graph, onDeleted, onError }: { graph: GraphSummary; onDeleted: () => void; onError: (errors: string[]) => void }) => {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: Event) => {
-      if (event instanceof KeyboardEvent ? event.key === "Escape" : !root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [open]);
-
   const remove = async () => {
-    setOpen(false);
     if (!confirm(`Delete the graph "${graph.name}"? Its nodes and edges are deleted too.`)) return;
     try {
       await api.deleteGraph(graph.id);
@@ -111,20 +95,7 @@ const RowActions = ({ graph, onDeleted, onError }: { graph: GraphSummary; onDele
     }
   };
 
-  return (
-    <div className="row-actions" ref={root} onClick={(event) => event.stopPropagation()}>
-      <button type="button" className="icon" aria-label={`Actions for ${graph.name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
-        …
-      </button>
-      {open && (
-        <div className="menu" role="menu">
-          <button type="button" role="menuitem" className="danger" onClick={() => void remove()}>
-            Delete
-          </button>
-        </div>
-      )}
-    </div>
-  );
+  return <MenuButton label={`Actions for ${graph.name}`} icon="…" items={[{ label: "Delete", danger: true, onSelect: () => void remove() }]} />;
 };
 
 export const GraphList = () => {

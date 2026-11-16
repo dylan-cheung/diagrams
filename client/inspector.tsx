@@ -172,19 +172,10 @@ const GraphInspector = ({ view, actions }: { view: GraphView; actions: Inspector
   );
 };
 
-// The end of the panel for the graph: its id and the action to delete it.
-export const GraphFooter = ({ view, actions }: { view: GraphView; actions: InspectorActions }) => (
+// The end of the panel for the graph: its id, for the API.
+export const GraphFooter = ({ view }: { view: GraphView }) => (
   <footer className="panel-footer">
     <span className="mono">{view.graph.id}</span>
-    <button
-      type="button"
-      className="link danger"
-      onClick={() => {
-        if (confirm(`Delete the graph "${view.graph.name}"? Its nodes and edges are deleted too.`)) actions.deleteGraph();
-      }}
-    >
-      Delete graph
-    </button>
   </footer>
 );
 

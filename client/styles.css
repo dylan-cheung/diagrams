@@ -647,6 +647,57 @@ button.add {
   font-weight: 700;
 }
 
+.title-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px 4px 12px;
+  max-width: min(480px, calc(100% - 260px));
+}
+
+.title-panel h1 {
+  margin: 0;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title-panel .row-actions {
+  margin-left: auto;
+}
+
+.title-panel .icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-color: transparent;
+}
+
+.title-panel .menu {
+  right: auto;
+  left: 0;
+}
+
+.publish-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px 4px 12px;
+}
+
+.direction-panel {
+  display: flex;
+  gap: 8px;
+}
+
+.floating-button {
+  background: var(--panel);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
+}
+
 .direction-panel .tabs {
   background: var(--panel);
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);

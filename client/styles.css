@@ -405,6 +405,38 @@ ul.errors {
   border-color: var(--removed);
 }
 
+.app-nav {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 8px;
+}
+
+.app-nav a {
+  padding: 4px 10px;
+  border-radius: 6px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.app-nav a:hover {
+  color: var(--ink);
+  background: var(--chip);
+}
+
+.app-nav a[aria-current="page"] {
+  color: var(--ink);
+  background: var(--chip);
+  font-weight: 600;
+}
+
+button.add {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
 .search {
   width: min(360px, 100%);
 }

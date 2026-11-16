@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { Term } from "../model.ts";
-import { Link } from "./router.tsx";
+import { AppNav } from "./app-nav.tsx";
 import { useVocabulary } from "./vocabulary.ts";
 
 const SECTIONS = [
@@ -97,14 +97,8 @@ export const Guide = () => {
   return (
     <div className="app">
       <header className="toolbar">
-        <Link className="back" to={{ page: "list" }}>
-          ← Graphs
-        </Link>
-        <h1>Guide</h1>
-        <span className="spacer" />
-        <a href="/docs" target="_blank" rel="noreferrer">
-          API
-        </a>
+        <h1>Diagram</h1>
+        <AppNav current="guide" />
       </header>
       <div className="guide">
         <nav className="guide-nav" aria-label="Guide sections">
@@ -123,7 +117,7 @@ export const Guide = () => {
           <Section id="walkthrough" title="Walkthrough">
             <ol>
               <li>
-                On the first page, click <b>New graph</b>. Give the graph a name and a purpose. The purpose says what question the graph answers.
+                On the <b>Graphs</b> page, click <b>+</b>. Give the graph a name and a purpose. The purpose says what question the graph answers.
               </li>
               <li>
                 The graph opens in <b>Edit</b> mode. Click <b>Add node</b> for each thing in the graph.

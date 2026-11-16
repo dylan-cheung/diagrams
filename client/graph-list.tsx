@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { GraphSummary } from "../model.ts";
 import { ApiError, api } from "./api.ts";
+import { AppNav } from "./app-nav.tsx";
 import { go, Link } from "./router.tsx";
 
 type SortKey = "name" | "published" | "nodeCount" | "openProposals" | "updatedAt";
@@ -166,15 +167,12 @@ export const GraphList = () => {
     <div className="app">
       <header className="toolbar">
         <h1>Diagram</h1>
-        <input className="search" type="search" placeholder="Search by name, ID or purpose" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
+        <AppNav current="list" />
         <span className="spacer" />
-        <button type="button" className="primary" onClick={() => setCreating(true)}>
-          New graph
+        <input className="search" type="search" placeholder="Search by name, ID or purpose" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
+        <button type="button" className="primary add" aria-label="New graph" title="New graph" onClick={() => setCreating(true)}>
+          +
         </button>
-        <Link to={{ page: "guide" }}>Guide</Link>
-        <a href="/docs" target="_blank" rel="noreferrer">
-          API
-        </a>
       </header>
       {errors.length > 0 && (
         <div className="banner errors">
@@ -232,7 +230,7 @@ export const GraphList = () => {
             ))}
           </tbody>
         </table>
-        {loaded && rows.length === 0 && <p className="empty">{graphs.length === 0 ? "No graphs yet. Click New graph to make one." : "No graph matches the search."}</p>}
+        {loaded && rows.length === 0 && <p className="empty">{graphs.length === 0 ? "No graphs yet. Click + to make one." : "No graph matches the search."}</p>}
       </div>
       {creating && <NewGraphDialog onClose={() => setCreating(false)} />}
     </div>

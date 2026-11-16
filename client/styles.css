@@ -482,10 +482,6 @@ ul.errors {
   text-decoration: none;
 }
 
-.row-name:hover {
-  text-decoration: underline;
-}
-
 .row-purpose {
   color: var(--muted);
   display: -webkit-box;

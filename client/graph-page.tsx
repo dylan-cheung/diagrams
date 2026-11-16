@@ -407,22 +407,6 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
         <button type="button" onClick={() => relayout(draft?.graph.direction ?? "horizontal")} disabled={draft == null || readOnly || draft.nodes.length === 0}>
           Auto layout
         </button>
-        {versions.length > 0 && (
-          <select
-            className="version-select"
-            value={String(shown)}
-            onChange={(e) => setPicked(e.target.value === "draft" ? "draft" : Number(e.target.value))}
-            aria-label="Version to show"
-          >
-            <option value="draft">Draft</option>
-            {versions.map((version) => (
-              <option key={version.version} value={version.version}>
-                Version {version.version}
-                {version.version === published ? " (latest)" : ""}
-              </option>
-            ))}
-          </select>
-        )}
         <button
           type="button"
           className="primary"

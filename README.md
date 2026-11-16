@@ -11,6 +11,7 @@ The app uses the labeled property graph model of ISO GQL (ISO/IEC 39075). In gra
 | Node | `id`, `name`, `description`, `type`, `intent`, `status`, `labels[]`, `properties{}` | The core entity. A node does not store its edges. All fields except the name are optional. |
 | Edge | `id`, `source`, `target`, `directed`, `type`, `label`, `description`, `intent`, `status`, `properties{}` | Its own entity. Deleting a node deletes its edges. The editor shows the label, or the type name when the label is empty. |
 | Graph | `id`, `name`, `description` + its nodes (with `x`, `y`) and edges | A named subgraph. Every node and edge is in a graph: you create them only in a graph (`POST /api/graphs/{id}/nodes` and `.../edges`), and when no graph holds one any more, it is deleted. The API can also put one node in many graphs, with a different position in each. A graph can include an edge only if it includes both nodes. The description says what the graph is for. It is required when you create a graph. |
+| Flow | `id`, `graphId`, `name`, `description`, `steps[]` (`nodeId`, `edgeId`) | One specific path through a graph, for example the main path of a feature or an edge case. A graph can have many flows. Each step after the first follows an edge of the graph from the node of the step before. A flow is part of the draft, so a publish saves it in the version. |
 | Version | `graphId`, `version`, `hash`, `publishedAt`, `view` | A published copy of a graph that does not change. `view` holds the graph, its nodes with positions, and its edges as they were at publish time. Versions stay after the graph is deleted. |
 
 Property values are strings, numbers, booleans or `null`. Use `properties` for extensible metadata.
@@ -38,6 +39,16 @@ Apps that run a graph, for example a voice app that walks a decision tree, must 
 - **Publish** (in the inspector, or `POST /api/graphs/{id}/versions`) saves version `n + 1`. If nothing changed since the latest version, it returns that version. Positions do not count as a change.
 - `GET /api/graphs/{id}/versions/{version}` returns one version. Use `latest` for the newest.
 - `hash` is a SHA-256 of the graph content (name, description, nodes and edges, without positions and timestamps).
+
+### Flows
+
+A graph that describes a feature shows everything that can happen. A flow picks one path through it, step by step.
+
+- `POST /api/graphs/{id}/flows` adds a flow with a name, a description and its steps. Each step names a node. A step after the first also names the edge it follows from the node before (`edgeId`). Omit `edgeId` when exactly one edge connects the two nodes in that direction. An undirected edge goes both ways.
+- `PATCH /api/graphs/{id}/flows/{flowId}` changes a flow, and `steps` replaces all the steps. `DELETE` removes it. `GET /api/graphs/{id}` also returns the flows.
+- A flow keeps its steps when a node or an edge leaves the graph. The editor shows those steps in red.
+- Flows are part of the content hash only when the graph has flows, so the hash of a graph without flows does not change.
+- Proposals and undo do not include flows yet.
 
 ### Proposals
 
@@ -83,6 +94,7 @@ The app opens at http://127.0.0.1:4848.
 - The first page is a table of graphs. Search it, and click a column name to sort it. The table shows the latest version, a **draft** mark when the draft has changes that are not published, and the number of open proposals. Click **+** to add a graph with a name and a description of its purpose. Click **…** at the end of a row for actions on that graph. **Delete** deletes the graph after you confirm.
 - Click a graph to open its draft (`/graphs/{id}`). The draft is always editable, and each change saves at once. The status at the top right of the canvas says **Saving…** while a change is on its way, and then if the draft has changes since the latest version. Edit the graph name and purpose in the panel, add nodes from the bar on the left of the canvas (one button for each node type in the vocabulary, and one for a node without a type: drag it onto the canvas, or click it to add the node in the middle of the view), and click **Publish** to save a version. The app shows only the nodes of the open graph.
 - **Undo and redo:** the editor keeps a history of the changes you make to the draft in this session (until you reload or leave the page). Press ⌘Z or Ctrl+Z to undo and ⇧⌘Z, Ctrl+Shift+Z or Ctrl+Y to redo, or use the undo and redo buttons under the node types on the left of the canvas. In a text field, these keys undo your typing instead. With nothing selected, the **History** section in the panel lists the changes; click one to go back to the state just after it. An undo puts back the whole draft state, positions and edge routes included (`PUT /api/graphs/{id}/draft`), so it also undoes changes that others made to this graph in the meantime. A deleted node or edge comes back with the same id. Applying a proposal clears the history.
+- **Flows:** with nothing selected, the **Flows** section of the panel lists the flows of the graph. Type a name and click **Add** to make a flow. While a flow is open, a click on a node adds it as the next step, and a click on an edge follows that edge. The canvas shows the path with step numbers and dims the rest. Click **×** on a step to remove it and the steps after it, and **Done** to close the flow. A flow in a published version is read-only.
 - With nothing selected, the panel lists the proposals and the versions. Pick a version (in the panel or the version list) to look at it. A version is read-only; **Back to the draft** returns to the draft. Old links to `/graphs/{id}/edit` open the draft.
 - Each node has a dot on each side. Drag from any dot on one node to any dot on another node to add an edge. The node where the drag starts is the source. Drag to another dot on the same node to add a loop.
 - Select a node or an edge to edit it in the inspector. Set its type, status, description and intent there. **Delete node** or **Delete edge** removes it from this graph. It stays in other graphs that hold it.

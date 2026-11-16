@@ -13,6 +13,7 @@ const SECTIONS = [
   ["status", "Lifecycle status"],
   ["intent", "Intent"],
   ["shapes", "Kinds of graph"],
+  ["flows", "Flows"],
   ["versions", "Versions"],
   ["proposals", "Proposals"],
 ] as const;
@@ -336,6 +337,33 @@ export const Guide = () => {
               <li>Nested nodes: a node inside a node. Use a separate graph, or a label.</li>
               <li>Schemas that limit which types can connect.</li>
             </ul>
+          </Section>
+
+          <Section id="flows" title="Flows">
+            <p>
+              A graph shows everything that can happen, for example all of a feature. A flow is one specific path through that graph, step by step. A graph can have
+              many flows: the main path, and one flow for each edge case.
+            </p>
+            <FieldTable
+              rows={[
+                ["name", "The short name of the path, for example \"Caller has a claim number\"."],
+                ["description", "What happens on this path, and when it happens."],
+                ["steps", "The nodes of the path in order. Each step after the first follows an edge from the node before. A node can be in more than one step."],
+              ]}
+            />
+            <ol>
+              <li>
+                With nothing selected, find <b>Flows</b> in the panel. Type a name and click <b>Add</b>.
+              </li>
+              <li>Click the node where the flow starts. Then click each next node, or the edge to follow when more than one edge connects two nodes.</li>
+              <li>
+                The canvas shows the path with step numbers. Click <b>×</b> on a step to remove it and the steps after it. Click <b>Done</b> to close the flow.
+              </li>
+            </ol>
+            <p>
+              Flows are part of the draft, so <b>Publish</b> saves them in the version. When a node or an edge of a flow leaves the graph, the step shows in red until
+              you remove it.
+            </p>
           </Section>
 
           <Section id="versions" title="Versions">

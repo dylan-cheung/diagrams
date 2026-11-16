@@ -170,7 +170,9 @@ a {
   height: 100vh;
 }
 
+/* The same height on every page, with or without the search field and the + button. */
 .toolbar {
+  min-height: 48px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -412,6 +414,7 @@ ul.errors {
 }
 
 .app-nav a {
+  display: inline-grid;
   padding: 4px 10px;
   border-radius: 6px;
   color: var(--muted);
@@ -421,6 +424,15 @@ ul.errors {
 .app-nav a:hover {
   color: var(--ink);
   background: var(--chip);
+}
+
+/* Reserve the width of the bold text, so a link does not change width when it becomes the current page. */
+.app-nav a::after {
+  content: attr(data-label);
+  font-weight: 600;
+  height: 0;
+  visibility: hidden;
+  overflow: hidden;
 }
 
 .app-nav a[aria-current="page"] {

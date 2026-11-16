@@ -432,10 +432,6 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
         >
           Publish
         </button>
-        <Link to={{ page: "guide" }}>Guide</Link>
-        <a href="/docs" target="_blank" rel="noreferrer">
-          API
-        </a>
       </header>
       {banner}
       <div className="body">

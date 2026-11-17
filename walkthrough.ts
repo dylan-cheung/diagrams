@@ -1,5 +1,5 @@
 import type { GraphStore } from "./db.ts";
-import type { EdgeInput, NodeInput, Position } from "./model.ts";
+import type { EdgeInput, NodeInput, Position, Properties } from "./model.ts";
 import LAYOUT from "./walkthrough-layout.json";
 
 // The walkthrough graph: a realistic example that uses every default node type, relationship type and status, and
@@ -211,6 +211,56 @@ const FLOWS: SeedFlow[] = [
   },
 ];
 
+type SeedRun = {
+  flow: string;
+  label: string;
+  properties: Properties;
+  notes: string[];
+  finish: { status: "completed" | "failed" | "cancelled"; note: string } | null;
+};
+
+// Example runs of the flows on version 1. Each note is for one step after the first. A run without finish stays running.
+const RUNS: SeedRun[] = [
+  {
+    flow: "Small claim is paid at once",
+    label: "Claim 1042: cracked windshield",
+    properties: { amount_usd: 1200, customer: "C-5531" },
+    notes: ["Claim valid, policy active.", "Amount under the limit.", "Payout of $1,200 requested.", "Card processor accepted.", "Payout confirmed.", "claim.paid published."],
+    finish: { status: "completed", note: "Customer paid in 4 minutes." },
+  },
+  {
+    flow: "Small claim is paid at once",
+    label: "Claim 1057: rear bumper",
+    properties: { amount_usd: 800, customer: "C-6120" },
+    notes: ["Claim valid, policy active.", "Amount under the limit.", "Payout of $800 requested."],
+    finish: null,
+  },
+  {
+    flow: "Large claim needs an adjuster",
+    label: "Claim 2210: kitchen water damage",
+    properties: { amount_usd: 12400, customer: "C-1877" },
+    notes: [
+      "Claim valid, photos attached.",
+      "Amount above the limit.",
+      "Adjuster opened the claim.",
+      "Adjuster approved after a site visit.",
+      "Routed again after approval.",
+      "Approved claim goes to payment.",
+      "Payout of $12,400 requested.",
+      "Card processor accepted.",
+      "claim.paid published.",
+    ],
+    finish: { status: "completed", note: "Paid 3 days after the claim was submitted." },
+  },
+  {
+    flow: "Large claim needs an adjuster",
+    label: "Claim 2231: stolen bicycle",
+    properties: { amount_usd: 7900, customer: "C-4402" },
+    notes: ["Claim valid.", "Amount above the limit.", "Adjuster opened the claim."],
+    finish: { status: "failed", note: "Adjuster rejected the claim: the policy had lapsed." },
+  },
+];
+
 export type SavedLayout = { positions: Record<string, Position>; routes: Position[][] };
 
 // Makes the walkthrough graph with its saved ELK layout (walkthrough-layout.json), and publishes it as version 1, when
@@ -235,7 +285,16 @@ export const ensureWalkthrough = (store: GraphStore) => {
     positions: Object.fromEntries(NODES.flatMap(({ key }) => (layout.positions[key] == null ? [] : [[id(key), layout.positions[key]]]))),
     routes: Object.fromEntries(edgeIds.flatMap((edgeId, i) => (layout.routes[i] == null ? [] : [[edgeId, layout.routes[i]]]))),
   });
-  for (const { steps, ...flow } of FLOWS) store.createFlow(WALKTHROUGH_ID, { ...flow, steps: steps.map((key) => ({ nodeId: id(key) })) });
+  const flowIds = new Map(
+    FLOWS.map(({ steps, ...flow }) => [flow.name, store.createFlow(WALKTHROUGH_ID, { ...flow, steps: steps.map((key) => ({ nodeId: id(key) })) }).id]),
+  );
   store.publish(WALKTHROUGH_ID);
+  for (const { flow, label, properties, notes, finish } of RUNS) {
+    const flowId = flowIds.get(flow);
+    if (flowId == null) throw new Error(`The walkthrough has no flow ${flow}.`);
+    const run = store.startRun(WALKTHROUGH_ID, { flowId, label, properties });
+    for (const note of notes) store.advanceRun(WALKTHROUGH_ID, run.id, note);
+    if (finish != null) store.finishRun(WALKTHROUGH_ID, run.id, finish);
+  }
   return true;
 };

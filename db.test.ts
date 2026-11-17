@@ -608,6 +608,12 @@ describe("walkthrough graph", () => {
       ["Small claim is paid at once", 7],
       ["Large claim needs an adjuster", 10],
     ]);
+    expect(store.listRuns(WALKTHROUGH_ID).map(({ label, status, events }) => [label, status, events.length])).toEqual([
+      ["Claim 2231: stolen bicycle", "failed", 4],
+      ["Claim 2210: kitchen water damage", "completed", 10],
+      ["Claim 1057: rear bumper", "running", 4],
+      ["Claim 1042: cracked windshield", "completed", 7],
+    ]);
   });
 });
 

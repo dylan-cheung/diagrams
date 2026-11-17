@@ -123,6 +123,26 @@ describe("flows", () => {
   });
 });
 
+describe("runs", () => {
+  test("starts, advances and finishes a run of a published flow", async () => {
+    const graph = (await send("POST", "/api/graphs", { name: "run graph", description: "Run test." })).body;
+    const a = (await send("POST", `/api/graphs/${graph.id}/nodes`, { name: "A" })).body;
+    const b = (await send("POST", `/api/graphs/${graph.id}/nodes`, { name: "B" })).body;
+    await send("POST", `/api/graphs/${graph.id}/edges`, { source: a.id, target: b.id });
+    const flow = (await send("POST", `/api/graphs/${graph.id}/flows`, { name: "Main", steps: [{ nodeId: a.id }, { nodeId: b.id }] })).body;
+    const path = `/api/graphs/${graph.id}/runs`;
+
+    expect((await send("POST", path, { flowId: flow.id })).status).toBe(409);
+    await send("POST", `/api/graphs/${graph.id}/versions`);
+    const run = (await send("POST", path, { flowId: flow.id, label: "Call 1" })).body;
+    expect(run).toMatchObject({ version: 1, status: "running" });
+    expect((await send("POST", `${path}/${run.id}/advance`, { note: "ok" })).body.events).toHaveLength(2);
+    expect((await send("POST", `${path}/${run.id}/advance`, {})).status).toBe(409);
+    expect((await send("POST", `${path}/${run.id}/finish`, { status: "completed" })).body.status).toBe("completed");
+    expect((await send("GET", `${path}?flowId=${flow.id}`)).body).toHaveLength(1);
+  });
+});
+
 describe("API docs", () => {
   test("the OpenAPI spec lists every route", async () => {
     const spec = (await send("GET", "/openapi.json")).body;
@@ -147,6 +167,10 @@ describe("API docs", () => {
       "/api/graphs/{id}/proposals/{proposalId}/apply",
       "/api/graphs/{id}/proposals/{proposalId}/diff",
       "/api/graphs/{id}/proposals/{proposalId}/discard",
+      "/api/graphs/{id}/runs",
+      "/api/graphs/{id}/runs/{runId}",
+      "/api/graphs/{id}/runs/{runId}/advance",
+      "/api/graphs/{id}/runs/{runId}/finish",
       "/api/graphs/{id}/versions",
       "/api/graphs/{id}/versions/{version}",
       "/api/nodes",

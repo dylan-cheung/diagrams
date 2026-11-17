@@ -221,6 +221,61 @@ export const FlowInput = z
 
 export const FlowPatch = FlowInput.partial().openapi("FlowPatch");
 
+export const RunStatus = z
+  .enum(["running", "completed", "failed", "cancelled"])
+  .openapi("RunStatus", { description: "running until the run finishes. Only a running run can move to its next step." });
+
+export const RunEvent = z
+  .object({
+    step: z.number().int().positive().openapi({ description: "The step number in the flow, from 1.", example: 2 }),
+    nodeId: Id.openapi({ description: "The node of that step." }),
+    at: Timestamp.openapi({ description: "When the run reached the step." }),
+    note: z.string().openapi({ example: "Caller gave the claim number." }),
+  })
+  .openapi("RunEvent");
+
+export const Run = z
+  .object({
+    id: Id,
+    graphId: Id,
+    version: z.number().int().openapi({ description: "The published version that the run uses. Its flow and graph do not change.", example: 3 }),
+    flowId: Id,
+    label: z.string().openapi({ description: "A name for the run, for example the id of a call or a ticket.", example: "Call 4821" }),
+    status: RunStatus,
+    note: z.string().openapi({ description: "Why the run finished, when it finished.", example: "" }),
+    properties: Metadata,
+    events: z.array(RunEvent).openapi({ description: "The steps the run reached, in order. The last event is the current step." }),
+    startedAt: Timestamp,
+    endedAt: Timestamp.nullable(),
+    updatedAt: Timestamp,
+  })
+  .openapi("Run", { description: "One instance of a flow: a record of one pass through its steps, on a published version." });
+
+export const RunInput = z
+  .object({
+    flowId: z.string().min(1, { error: "A run needs a flow." }),
+    version: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .openapi({ description: "The published version to run. The default is the latest version. The flow must be in that version." }),
+    label: z.string().optional().openapi({ example: "Call 4821" }),
+    properties: Metadata.optional(),
+  })
+  .openapi("RunInput");
+
+export const AdvanceInput = z
+  .object({ note: z.string().optional().openapi({ description: "What happened at the next step.", example: "Claim found." }) })
+  .openapi("AdvanceInput");
+
+export const FinishInput = z
+  .object({
+    status: z.enum(["completed", "failed", "cancelled"]).openapi({ example: "completed" }),
+    note: z.string().optional().openapi({ example: "Payout sent." }),
+  })
+  .openapi("FinishInput");
+
 export const ContentNode = z
   .object({
     id: Id,
@@ -408,6 +463,10 @@ export type GraphView = z.infer<typeof GraphView>;
 export type Flow = z.infer<typeof Flow>;
 export type FlowStep = z.infer<typeof FlowStep>;
 export type FlowInput = z.infer<typeof FlowInput>;
+export type Run = z.infer<typeof Run>;
+export type RunEvent = z.infer<typeof RunEvent>;
+export type RunInput = z.infer<typeof RunInput>;
+export type FinishInput = z.infer<typeof FinishInput>;
 export type GraphVersionSummary = z.infer<typeof GraphVersionSummary>;
 export type GraphVersion = z.infer<typeof GraphVersion>;
 export type NodeInput = z.infer<typeof NodeInput>;

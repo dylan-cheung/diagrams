@@ -2,6 +2,7 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import { StoreError, type GraphStore } from "./db.ts";
 import {
+  AdvanceInput,
   ApplyInput,
   ApplyResult,
   DraftState,
@@ -9,6 +10,7 @@ import {
   EdgeInput,
   EdgePatch,
   ErrorBody,
+  FinishInput,
   Flow,
   FlowInput,
   FlowPatch,
@@ -30,6 +32,8 @@ import {
   ProposalDiff,
   ProposalInput,
   ProposalSummary,
+  Run,
+  RunInput,
   Vocabulary,
 } from "./schemas.ts";
 
@@ -53,6 +57,8 @@ const DiffQuery = z.object({
     .openapi({ param: { name: "against", in: "query" }, example: "latest" }),
 });
 const FlowParams = z.object({ id: pathParam("id"), flowId: pathParam("flowId") });
+const RunParams = z.object({ id: pathParam("id"), runId: pathParam("runId") });
+const RunsQuery = z.object({ flowId: z.string().optional().openapi({ param: { name: "flowId", in: "query" }, description: "Only the runs of this flow." }) });
 const GraphEdgeParams = z.object({ id: pathParam("id"), edgeId: pathParam("edgeId") });
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({
@@ -64,8 +70,8 @@ const body = <T extends z.ZodType>(schema: T) => ({ body: { content: { "applicat
 
 const errors = {
   400: json(ErrorBody, "The request is not valid."),
-  404: json(ErrorBody, "A graph, node, edge, flow or proposal in the path does not exist."),
-  409: json(ErrorBody, "The graph name is already used, or the proposal is not open."),
+  404: json(ErrorBody, "A graph, node, edge, flow, run or proposal in the path does not exist."),
+  409: json(ErrorBody, "The graph name is already used, the proposal is not open, or the run cannot change."),
 };
 
 const noContent = { 204: { description: "Done." } };
@@ -73,7 +79,7 @@ const noContent = { 204: { description: "Done." } };
 const route = <const T extends Parameters<typeof createRoute>[0]>(config: T) =>
   createRoute({ ...config, responses: { ...errors, ...config.responses } });
 
-const tag = { vocabulary: ["Vocabulary"], nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], flows: ["Flows"], proposals: ["Proposals"] };
+const tag = { vocabulary: ["Vocabulary"], nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], flows: ["Flows"], runs: ["Runs"], proposals: ["Proposals"] };
 
 export const createApi = (store: GraphStore) => {
   const app = new OpenAPIHono({
@@ -463,6 +469,68 @@ export const createApi = (store: GraphStore) => {
     .openapi(
       route({
         method: "get",
+        path: "/api/graphs/{id}/runs",
+        tags: tag.runs,
+        summary: "List the runs of a graph",
+        description: "A run is one instance of a flow: one pass through its steps, on a published version. Runs stay after the graph is deleted.",
+        request: { params: IdParams, query: RunsQuery },
+        responses: { 200: json(z.array(Run), "Every run, newest first.") },
+      }),
+      (c) => c.json(store.listRuns(c.req.valid("param").id, c.req.valid("query").flowId), 200),
+    )
+    .openapi(
+      route({
+        method: "post",
+        path: "/api/graphs/{id}/runs",
+        tags: tag.runs,
+        summary: "Start a run of a flow",
+        description:
+          "The run uses a published version (the latest by default), so the graph and the flow it follows do not change while it runs. The flow must be in that version. The run starts at step 1 of the flow.",
+        request: { params: IdParams, ...body(RunInput) },
+        responses: { 200: json(Run, "The new, running run.") },
+      }),
+      (c) => c.json(store.startRun(c.req.valid("param").id, c.req.valid("json")), 200),
+    )
+    .openapi(
+      route({ method: "get", path: "/api/graphs/{id}/runs/{runId}", tags: tag.runs, summary: "Get a run", request: { params: RunParams }, responses: { 200: json(Run, "The run.") } }),
+      (c) => {
+        const { id, runId } = c.req.valid("param");
+        return c.json(store.getRun(id, runId), 200);
+      },
+    )
+    .openapi(
+      route({
+        method: "post",
+        path: "/api/graphs/{id}/runs/{runId}/advance",
+        tags: tag.runs,
+        summary: "Move a run to its next step",
+        description: "Records that the run reached the next step of its flow. A run at the last step must finish instead.",
+        request: { params: RunParams, ...body(AdvanceInput) },
+        responses: { 200: json(Run, "The run at its next step.") },
+      }),
+      (c) => {
+        const { id, runId } = c.req.valid("param");
+        return c.json(store.advanceRun(id, runId, c.req.valid("json").note ?? ""), 200);
+      },
+    )
+    .openapi(
+      route({
+        method: "post",
+        path: "/api/graphs/{id}/runs/{runId}/finish",
+        tags: tag.runs,
+        summary: "Finish a run",
+        description: "Sets the final status: completed, failed or cancelled. A run can finish at any step. After that, it does not change.",
+        request: { params: RunParams, ...body(FinishInput) },
+        responses: { 200: json(Run, "The finished run.") },
+      }),
+      (c) => {
+        const { id, runId } = c.req.valid("param");
+        return c.json(store.finishRun(id, runId, c.req.valid("json")), 200);
+      },
+    )
+    .openapi(
+      route({
+        method: "get",
         path: "/api/graphs/{id}/proposals",
         tags: tag.proposals,
         summary: "List the proposals for a graph",
@@ -565,9 +633,9 @@ export const createApi = (store: GraphStore) => {
     openapi: "3.1.0",
     info: {
       title: "Diagram API",
-      version: "4.3.0",
+      version: "4.4.0",
       description:
-        "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A flow is a sequence of steps through a graph: one specific path, such as an edge case of a feature. A published version is a copy of a graph, with its flows, that does not change. A proposal is a proposed graph that you compare with a version before you apply it. The Guide page of the app (/guide) explains each part.",
+        "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A flow is a sequence of steps through a graph: one specific path, such as an edge case of a feature. A run is one instance of a flow on a published version. A published version is a copy of a graph, with its flows, that does not change. A proposal is a proposed graph that you compare with a version before you apply it. The Guide page of the app (/guide) explains each part.",
     },
   });
   app.get("/docs", Scalar({ url: "/openapi.json", pageTitle: "Diagram API", showDeveloperTools: "never" }));

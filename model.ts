@@ -34,6 +34,10 @@ export type {
   Proposal,
   ProposalInput,
   ProposalSummary,
+  FinishInput,
+  Run,
+  RunEvent,
+  RunInput,
   Term,
   Vocabulary,
 } from "./schemas.ts";

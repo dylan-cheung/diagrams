@@ -12,6 +12,7 @@ import {
   type ContentEdge,
   type ContentNode,
   type EdgeInput,
+  type FinishInput,
   type Flow,
   type FlowInput,
   type FlowStep,
@@ -32,6 +33,9 @@ import {
   type Proposal,
   type ProposalInput,
   type ProposalSummary,
+  type Run,
+  type RunEvent,
+  type RunInput,
   type Vocabulary,
 } from "./model.ts";
 import { DEFAULT_VOCABULARY, edgeDesignErrors, nodeDesignErrors } from "./vocabulary.ts";
@@ -69,6 +73,21 @@ type GraphRow = { id: string; name: string; description: string; direction: Layo
 type VersionRow = { graph_id: string; version: number; hash: string; published_at: string };
 
 type FlowRow = { id: string; graph_id: string; name: string; description: string; steps: string; created_at: string; updated_at: string };
+
+type RunRow = {
+  id: string;
+  graph_id: string;
+  version: number;
+  flow_id: string;
+  label: string;
+  status: Run["status"];
+  note: string;
+  properties: string;
+  events: string;
+  started_at: string;
+  ended_at: string | null;
+  updated_at: string;
+};
 
 type PlacedNodeRow = NodeRow & { x: number | null; y: number | null };
 
@@ -157,6 +176,21 @@ const toFlow = (row: FlowRow): Flow => ({
   description: row.description,
   steps: JSON.parse(row.steps) as FlowStep[],
   createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const toRun = (row: RunRow): Run => ({
+  id: row.id,
+  graphId: row.graph_id,
+  version: row.version,
+  flowId: row.flow_id,
+  label: row.label,
+  status: row.status,
+  note: row.note,
+  properties: JSON.parse(row.properties) as Properties,
+  events: JSON.parse(row.events) as RunEvent[],
+  startedAt: row.started_at,
+  endedAt: row.ended_at,
   updatedAt: row.updated_at,
 });
 
@@ -274,6 +308,21 @@ CREATE TABLE IF NOT EXISTS flows (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS flows_graph ON flows(graph_id);
+CREATE TABLE IF NOT EXISTS runs (
+  id TEXT PRIMARY KEY,
+  graph_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  flow_id TEXT NOT NULL,
+  label TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'running',
+  note TEXT NOT NULL DEFAULT '',
+  properties TEXT NOT NULL DEFAULT '{}',
+  events TEXT NOT NULL DEFAULT '[]',
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS runs_graph ON runs(graph_id, flow_id);
 `;
 
 const ADDED_COLUMNS: [string, string, string][] = [
@@ -827,6 +876,72 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     return requireFlow(graphId, flowId);
   };
 
+  const runById = db.query<RunRow, { id: string; graphId: string }>("SELECT * FROM runs WHERE id = $id AND graph_id = $graphId");
+
+  const requireRun = (graphId: string, runId: string) => {
+    const row = runById.get({ id: runId, graphId });
+    if (row == null) throw new StoreError("The run does not exist.", 404);
+    return toRun(row);
+  };
+
+  const requireRunning = (graphId: string, runId: string) => {
+    const run = requireRun(graphId, runId);
+    if (run.status !== "running") throw new StoreError(`The run is ${run.status}. Only a running run can change.`, 409);
+    return run;
+  };
+
+  const flowOfVersion = (graphId: string, version: number, flowId: string) => {
+    const flow = getVersion(graphId, version).view.flows.find(({ id }) => id === flowId);
+    if (flow == null) throw new StoreError(`The flow is not in version ${version}. Publish the graph after you add the flow.`, 400);
+    return flow;
+  };
+
+  const saveRun = db.query(
+    "UPDATE runs SET status = $status, note = $note, events = $events, ended_at = $endedAt, updated_at = $now WHERE id = $id",
+  );
+
+  const startRun = (graphId: string, input: RunInput) => {
+    requireGraph(graphId);
+    const version = input.version ?? latestVersion.get({ graphId })?.version;
+    if (version == null) throw new StoreError("The graph has no published version. Publish it before you start a run.", 409);
+    const first = flowOfVersion(graphId, version, input.flowId).steps[0];
+    if (first == null) throw new StoreError("The flow has no steps.", 400);
+    const id = crypto.randomUUID();
+    const stamp = now();
+    db.query(
+      `INSERT INTO runs (id, graph_id, version, flow_id, label, properties, events, started_at, updated_at)
+       VALUES ($id, $graphId, $version, $flowId, $label, $properties, $events, $stamp, $stamp)`,
+    ).run({
+      id,
+      graphId,
+      version,
+      flowId: input.flowId,
+      label: input.label?.trim() ?? "",
+      properties: JSON.stringify(input.properties ?? {}),
+      events: JSON.stringify([{ step: 1, nodeId: first.nodeId, at: stamp, note: "" }]),
+      stamp,
+    });
+    return requireRun(graphId, id);
+  };
+
+  const advanceRun = (graphId: string, runId: string, note: string) => {
+    const run = requireRunning(graphId, runId);
+    const steps = flowOfVersion(graphId, run.version, run.flowId).steps;
+    const next = steps[run.events.length];
+    if (next == null) throw new StoreError("The run is at the last step of its flow. Finish it.", 409);
+    const stamp = now();
+    const events = [...run.events, { step: run.events.length + 1, nodeId: next.nodeId, at: stamp, note: note.trim() }];
+    saveRun.run({ id: runId, status: run.status, note: run.note, events: JSON.stringify(events), endedAt: null, now: stamp });
+    return requireRun(graphId, runId);
+  };
+
+  const finishRun = (graphId: string, runId: string, { status, note }: FinishInput) => {
+    const run = requireRunning(graphId, runId);
+    const stamp = now();
+    saveRun.run({ id: runId, status, note: note?.trim() ?? "", events: JSON.stringify(run.events), endedAt: stamp, now: stamp });
+    return requireRun(graphId, runId);
+  };
+
   const diffProposal = (graphId: string, proposalId: string, against: number | "latest" | "draft") => {
     const proposal = toProposal(requireProposal(graphId, proposalId));
     if (against === "draft") return { against, diff: diffGraphs(toContent(view(graphId)), proposal.content) };
@@ -981,6 +1096,18 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       db.query("DELETE FROM flows WHERE id = $id").run({ id: flowId });
       touchGraph(graphId);
     },
+
+    listRuns: (graphId: string, flowId?: string) =>
+      db
+        .query<RunRow, { graphId: string; flowId: string | null }>(
+          "SELECT * FROM runs WHERE graph_id = $graphId AND ($flowId IS NULL OR flow_id = $flowId) ORDER BY started_at DESC, rowid DESC",
+        )
+        .all({ graphId, flowId: flowId ?? null })
+        .map(toRun),
+    getRun: requireRun,
+    startRun,
+    advanceRun,
+    finishRun,
 
     listProposals: (graphId: string) => {
       requireGraph(graphId);

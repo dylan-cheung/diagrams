@@ -358,6 +358,58 @@ describe("flows", () => {
   });
 });
 
+describe("runs", () => {
+  const setup = () => {
+    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const a = store.createNodeInGraph(one.id, { name: "A" }, null);
+    const b = store.createNodeInGraph(one.id, { name: "B" }, null);
+    const c = store.createNodeInGraph(one.id, { name: "C" }, null);
+    store.createEdgeInGraph(one.id, { source: a.id, target: b.id });
+    store.createEdgeInGraph(one.id, { source: b.id, target: c.id });
+    const flow = store.createFlow(one.id, { name: "Main", steps: [{ nodeId: a.id }, { nodeId: b.id }, { nodeId: c.id }] });
+    return { one, a, b, c, flow };
+  };
+
+  test("a run needs a published version that holds the flow", () => {
+    const { one, flow } = setup();
+    expect(() => store.startRun(one.id, { flowId: flow.id })).toThrow("The graph has no published version.");
+    store.publish(one.id);
+    const other = store.createFlow(one.id, { name: "Later", steps: [] });
+    expect(() => store.startRun(one.id, { flowId: other.id })).toThrow("The flow is not in version 1.");
+  });
+
+  test("a run moves through the steps of its flow and then finishes", () => {
+    const { one, a, b, c, flow } = setup();
+    store.publish(one.id);
+    const run = store.startRun(one.id, { flowId: flow.id, label: "Call 1" });
+    expect(run).toMatchObject({ version: 1, status: "running", label: "Call 1", endedAt: null });
+    expect(run.events.map(({ step, nodeId }) => [step, nodeId])).toEqual([[1, a.id]]);
+    store.advanceRun(one.id, run.id, "found");
+    const last = store.advanceRun(one.id, run.id, "");
+    expect(last.events.map(({ nodeId, note }) => [nodeId, note])).toEqual([
+      [a.id, ""],
+      [b.id, "found"],
+      [c.id, ""],
+    ]);
+    expect(() => store.advanceRun(one.id, run.id, "")).toThrow("The run is at the last step of its flow.");
+    const done = store.finishRun(one.id, run.id, { status: "completed", note: "paid" });
+    expect(done).toMatchObject({ status: "completed", note: "paid" });
+    expect(done.endedAt).not.toBeNull();
+    expect(() => store.finishRun(one.id, run.id, { status: "failed" })).toThrow("The run is completed.");
+  });
+
+  test("a run keeps the flow of its version when the draft flow changes", () => {
+    const { one, a, b, flow } = setup();
+    store.publish(one.id);
+    const run = store.startRun(one.id, { flowId: flow.id });
+    store.updateFlow(one.id, flow.id, { steps: [{ nodeId: a.id }] });
+    store.publish(one.id);
+    expect(store.advanceRun(one.id, run.id, "").events[1]?.nodeId).toBe(b.id);
+    expect(store.listRuns(one.id, flow.id)).toHaveLength(1);
+    expect(store.listRuns(one.id, "other")).toEqual([]);
+  });
+});
+
 describe("proposals", () => {
   const setup = () => {
     const one = store.createGraph({ name: "one", description: "Test graph one." });

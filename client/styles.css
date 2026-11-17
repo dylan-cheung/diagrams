@@ -372,9 +372,20 @@ ul.errors {
   border-color: var(--added);
 }
 
-.pill.discarded {
+.pill.discarded,
+.pill.failed {
   color: var(--removed);
   border-color: var(--removed);
+}
+
+.pill.running {
+  color: var(--open);
+  border-color: var(--open);
+}
+
+.pill.completed {
+  color: var(--added);
+  border-color: var(--added);
 }
 
 .app-nav {
@@ -950,6 +961,29 @@ button.add {
 .react-flow__edge-path.on-path {
   stroke: var(--accent);
   stroke-width: 2.5;
+}
+
+.entity.on-path.step-pending,
+.react-flow__edge-path.on-path.step-pending,
+.edge-label.on-path.step-pending {
+  opacity: 0.55;
+}
+
+.react-flow__edge-path.on-path.step-pending {
+  stroke-dasharray: 5 4;
+}
+
+.entity.on-path.step-current {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.entity.step-current .step-badge {
+  outline: 2px solid var(--panel);
+}
+
+.run-controls {
+  display: grid;
+  gap: 8px;
 }
 
 .edge-label.on-path {

@@ -2,10 +2,10 @@ import { Panel, ReactFlowProvider } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toContent } from "../diff.ts";
 import { autoLayout } from "../layout.ts";
-import type { FlowStep, GraphContent, GraphEdge, GraphSummary, GraphVersion, GraphVersionSummary, GraphView, LayoutDirection, Position, ProposalSummary } from "../model.ts";
+import type { FlowStep, Run, GraphContent, GraphEdge, GraphSummary, GraphVersion, GraphVersionSummary, GraphView, LayoutDirection, Position, ProposalSummary } from "../model.ts";
 import { ApiError, api } from "./api.ts";
 import { edgeText, GraphCanvas, type Selection } from "./canvas.tsx";
-import { FlowPanel, FlowsSection, pathOf, type FlowActions } from "./flow-panel.tsx";
+import { FlowPanel, FlowsSection, pathOf, RunPanel, type FlowActions, type RunActions } from "./flow-panel.tsx";
 import { GraphFooter, GraphTitle, Inspector, type InspectorActions } from "./inspector.tsx";
 import { MenuButton } from "./menu.tsx";
 import { ProposalReview } from "./review.tsx";
@@ -54,6 +54,8 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
   const [loadedVersions, setLoadedVersions] = useState<Record<number, GraphVersion>>({});
   const [selection, setSelection] = useState<Selection>(null);
   const [flowId, setFlowId] = useState<string | null>(null);
+  const [runs, setRuns] = useState<Run[]>([]);
+  const [runId, setRunId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   // The number of changes that are on their way to the server. Every change saves at once, so the draft is saved when
@@ -71,13 +73,15 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
   }, [graphId, vocabulary]);
 
   const refresh = useCallback(async () => {
-    const [nextDraft, nextVersions, nextProposals, graphs] = await Promise.all([
+    const [nextDraft, nextVersions, nextProposals, graphs, nextRuns] = await Promise.all([
       loadDraft(),
       api.listVersions(graphId),
       api.listProposals(graphId),
       api.listGraphs(),
+      api.listRuns(graphId),
     ]);
     setDraft(nextDraft);
+    setRuns(nextRuns);
     setVersions(nextVersions);
     setProposals(nextProposals);
     setSummary(graphs.find(({ id }) => id === graphId) ?? null);
@@ -150,7 +154,10 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
 
   const flows = (readOnly ? shownVersion?.view.flows : draft?.flows) ?? [];
   const flow = flows.find(({ id }) => id === flowId);
-  const path = useMemo(() => (flow == null ? undefined : pathOf(flow)), [flow]);
+  const flowRuns = runs.filter((item) => item.flowId === flow?.id);
+  const openRun = flowRuns.find(({ id }) => id === runId);
+  const reached = openRun?.events.length;
+  const path = useMemo(() => (flow == null ? undefined : pathOf(flow, reached)), [flow, reached]);
 
   const nodeName = (id: string) => draft?.nodes.find((node) => node.id === id)?.name ?? "node";
   const edgeName = (id: string) => {
@@ -276,7 +283,26 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
 
   const openFlow = (id: string) => {
     setSelection(null);
+    setRunId(null);
     setFlowId(id);
+  };
+
+  // A run shows on the version it uses, so the canvas shows the graph and the flow that the run follows.
+  const showRun = (item: Run) => {
+    setSelection(null);
+    setPicked(item.version);
+    setFlowId(item.flowId);
+    setRunId(item.id);
+  };
+
+  const runActions: RunActions = {
+    advance: (note) => {
+      if (openRun != null) void run(() => api.advanceRun(graphId, openRun.id, note));
+    },
+    finish: (status) => {
+      if (openRun != null) void run(() => api.finishRun(graphId, openRun.id, { status }));
+    },
+    close: () => setRunId(null),
   };
 
   const createFlow = async (name: string) => {
@@ -296,7 +322,17 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     remove: () => {
       if (flow != null) void run(() => api.deleteFlow(graphId, flow.id)).then(() => setFlowId(null));
     },
-    close: () => setFlowId(null),
+    close: () => {
+      setFlowId(null);
+      setRunId(null);
+    },
+    startRun: () => {
+      if (flow == null || published == null) return;
+      void run(() => api.startRun(graphId, flow.id, published)).then((created) => {
+        if (created != null) showRun(created);
+      });
+    },
+    openRun: showRun,
   };
 
   // The steps of the open flow with one more step for a click on a node or an edge, or why the click cannot add one.
@@ -324,6 +360,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
       setSelection(next);
     } else if (readOnly) {
       setFlowId(null);
+      setRunId(null);
       setSelection(next);
     } else if (next != null) {
       const steps = nextSteps(flow.steps, next);
@@ -533,7 +570,17 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
           )}
         </main>
         <aside className="inspector">
-          {flow != null && content != null && <FlowPanel flow={flow} content={content} readOnly={readOnly} actions={flowActions} />}
+          {flow != null && content != null && openRun != null && <RunPanel key={openRun.id} run={openRun} flow={flow} content={content} actions={runActions} />}
+          {flow != null && content != null && openRun == null && (
+            <FlowPanel
+              flow={flow}
+              content={content}
+              readOnly={readOnly}
+              runs={flowRuns}
+              canRun={published == null ? "Publish the graph to run its flows." : null}
+              actions={flowActions}
+            />
+          )}
           {flow == null && !readOnly && draft != null && draftContent != null && (
             <>
               <Inspector view={draft} selection={selection} actions={actions} />

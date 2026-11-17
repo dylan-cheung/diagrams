@@ -28,11 +28,16 @@ export type Selection = { kind: "node" | "edge"; id: string } | null;
 
 export type Marks = { nodes: Map<string, ChangeStatus>; edges: Map<string, ChangeStatus> };
 
-// The path of a flow on the canvas: the step numbers of each node on it, and the edges it follows.
-export type FlowPath = { steps: Map<string, number[]>; edges: Set<string> };
+// The path of a flow on the canvas: the step numbers of each node on it, and the edges it follows. For a run, the
+// path also has the node of the current step and the nodes and edges that the run did not reach yet.
+export type FlowPath = { steps: Map<string, number[]>; edges: Set<string>; current?: string; pending?: Set<string> };
 
 type Design = { type: string | null; status: string | null };
-type EntityNode = Node<Design & { name: string; labels: string[]; mark: ChangeStatus | undefined; steps: number[] | undefined }, "entity">;
+type StepState = "current" | "pending" | undefined;
+type EntityNode = Node<
+  Design & { name: string; labels: string[]; mark: ChangeStatus | undefined; steps: number[] | undefined; stepState: StepState },
+  "entity"
+>;
 type EdgeFocus = "hovered" | "dimmed" | undefined;
 type FloatingEdge = Edge<
   Design & {
@@ -43,6 +48,7 @@ type FloatingEdge = Edge<
     route: Point[] | undefined;
     focus: EdgeFocus;
     onPath: boolean | undefined;
+    pending: boolean;
     onHover: (hovered: boolean) => void;
     onSelect: () => void;
   },
@@ -52,6 +58,8 @@ type FloatingEdge = Edge<
 const focusClass = (focus: EdgeFocus) => (focus == null ? "" : ` edge-${focus}`);
 
 const pathClass = (onPath: boolean | undefined) => (onPath == null ? "" : onPath ? " on-path" : " off-path");
+
+const stepClass = (state: StepState | boolean) => (state === "current" ? " step-current" : state === "pending" || state === true ? " step-pending" : "");
 
 const markClass = (mark: ChangeStatus | undefined) => (mark == null ? "" : ` mark-${mark}`);
 
@@ -71,7 +79,7 @@ const EntityNodeView = ({ data, selected }: NodeProps<EntityNode>) => {
   const status = termName(vocabulary.statuses, data.status);
   return (
     <div
-      className={`entity${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}${data.steps == null ? "" : pathClass(data.steps.length > 0)}`}
+      className={`entity${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}${data.steps == null ? "" : pathClass(data.steps.length > 0)}${stepClass(data.stepState)}`}
       style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
     >
       {data.steps != null && data.steps.length > 0 && <div className="step-badge">{data.steps.join(", ")}</div>}
@@ -118,12 +126,12 @@ const FloatingEdgeView = ({ id, source, target, data, label, markerEnd, selected
         id={id}
         path={geometry.path}
         markerEnd={markerEnd}
-        className={`${selected ? "edge-selected" : ""}${markClass(data.mark)}${designClass(data)}${focusClass(data.focus)}${pathClass(data.onPath)}`}
+        className={`${selected ? "edge-selected" : ""}${markClass(data.mark)}${designClass(data)}${focusClass(data.focus)}${pathClass(data.onPath)}${stepClass(data.pending)}`}
       />
       {label != null && label !== "" && (
         <EdgeLabelRenderer>
           <div
-            className={`edge-label${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}${focusClass(data.focus)}${pathClass(data.onPath)}`}
+            className={`edge-label${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}${focusClass(data.focus)}${pathClass(data.onPath)}${stepClass(data.pending)}`}
             onMouseEnter={() => data.onHover(true)}
             onMouseLeave={() => data.onHover(false)}
             onClick={data.onSelect}
@@ -154,6 +162,7 @@ const toFlowNodes = (view: GraphContent, selection: Selection, marks: Marks | un
       labels: node.labels,
       mark: marks?.nodes.get(node.id),
       steps: path == null ? undefined : (path.steps.get(node.id) ?? []),
+      stepState: path?.current === node.id ? "current" : path?.pending?.has(node.id) === true ? "pending" : undefined,
     },
     selected: selection?.kind === "node" && selection.id === node.id,
   }));
@@ -257,6 +266,7 @@ const toFlowEdges = (
       route: routes.get(edge.id),
       focus: hovered == null ? undefined : hovered === edge.id ? "hovered" : "dimmed",
       onPath: path == null ? undefined : path.edges.has(edge.id),
+      pending: path?.pending?.has(edge.id) === true,
       onHover: (on: boolean) => setHovered((current) => (on ? edge.id : current === edge.id ? null : current)),
       onSelect: () => onSelect({ kind: "edge", id: edge.id }),
     },

@@ -604,6 +604,10 @@ describe("walkthrough graph", () => {
     expect(edges.some(({ source, target }) => source === target)).toBe(true);
     expect(edges.some(({ directed }) => !directed)).toBe(true);
     expect(edges.every(({ route }) => route != null && route.length >= 2)).toBe(true);
+    expect(store.getVersion(WALKTHROUGH_ID, 1).view.flows.map(({ name, steps }) => [name, steps.length])).toEqual([
+      ["Small claim is paid at once", 7],
+      ["Large claim needs an adjuster", 10],
+    ]);
   });
 });
 

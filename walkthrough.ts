@@ -194,6 +194,23 @@ const EDGES: SeedEdge[] = [
   },
 ];
 
+type SeedFlow = { name: string; description: string; steps: string[] };
+
+// Each step is a node key. Between two steps, exactly one edge goes from the first node to the second, so the store finds it.
+const FLOWS: SeedFlow[] = [
+  {
+    name: "Small claim is paid at once",
+    description: "The main path. A customer submits a claim under $5,000, the Claims API routes it straight to payment, and the card processor confirms the payout.",
+    steps: ["app", "api", "small", "pay", "card", "pay", "queue"],
+  },
+  {
+    name: "Large claim needs an adjuster",
+    description:
+      "An edge case. A claim of $5,000 or more goes to the adjuster dashboard. After the adjuster approves it, the claim goes back through routing and is paid.",
+    steps: ["app", "api", "small", "dash", "api", "small", "pay", "card", "pay", "queue"],
+  },
+];
+
 export type SavedLayout = { positions: Record<string, Position>; routes: Position[][] };
 
 // Makes the walkthrough graph with its saved ELK layout (walkthrough-layout.json), and publishes it as version 1, when
@@ -218,6 +235,7 @@ export const ensureWalkthrough = (store: GraphStore) => {
     positions: Object.fromEntries(NODES.flatMap(({ key }) => (layout.positions[key] == null ? [] : [[id(key), layout.positions[key]]]))),
     routes: Object.fromEntries(edgeIds.flatMap((edgeId, i) => (layout.routes[i] == null ? [] : [[edgeId, layout.routes[i]]]))),
   });
+  for (const { steps, ...flow } of FLOWS) store.createFlow(WALKTHROUGH_ID, { ...flow, steps: steps.map((key) => ({ nodeId: id(key) })) });
   store.publish(WALKTHROUGH_ID);
   return true;
 };

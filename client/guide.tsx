@@ -14,6 +14,7 @@ const SECTIONS = [
   ["intent", "Intent"],
   ["shapes", "Kinds of graph"],
   ["flows", "Flows"],
+  ["runs", "Runs"],
   ["versions", "Versions"],
   ["proposals", "Proposals"],
 ] as const;
@@ -363,6 +364,27 @@ export const Guide = () => {
             <p>
               Flows are part of the draft, so <b>Publish</b> saves them in the version. When a node or an edge of a flow leaves the graph, the step shows in red until
               you remove it.
+            </p>
+          </Section>
+
+          <Section id="runs" title="Runs">
+            <p>
+              A run is one instance of a flow: one pass through its steps, for example one call or one claim. An app that follows a flow records each run, so you can see
+              later where each run went and where it stopped.
+            </p>
+            <ul>
+              <li>
+                A run uses a published version. The graph and the flow of that version do not change, so a run always shows the exact path it followed. Publish
+                the graph after you add or change a flow.
+              </li>
+              <li>A run starts at step 1. Each move to the next step records the time and an optional note.</li>
+              <li>
+                A run ends as <b>completed</b>, <b>failed</b> or <b>cancelled</b>. It can end at any step.
+              </li>
+            </ul>
+            <p>
+              Open a flow to see its runs. Click <b>Start a run</b> to step through the flow by hand. Click a run to see it on its version: the current step has a
+              ring, and the steps it did not reach yet show faded.
             </p>
           </Section>
 

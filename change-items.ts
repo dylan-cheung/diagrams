@@ -16,7 +16,10 @@ export type ItemKind = "idea" | "node" | "pseudo" | "hunk";
 
 export type Link = { from: string; to: string };
 
-export const itemRef = (kind: ItemKind, id: string) => `${kind}:${id}`;
+// A file of tests: in a tests or __tests__ folder, or named *.test.* or *.spec.*.
+export const isTestFile = (path: string) => /(^|\/)(__tests__|tests?)\//.test(path) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(path);
+
+export const itemRef =(kind: ItemKind, id: string) => `${kind}:${id}`;
 
 export const parseRef = (ref: string): { kind: ItemKind; id: string } | null => {
   const at = ref.indexOf(":");

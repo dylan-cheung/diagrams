@@ -226,7 +226,7 @@ export const ChangePage = ({ changeId, view }: { changeId: string; view: ChangeV
             />
           )}
           {view === "pseudocode" && <PseudoView change={change} save={save} {...itemProps} />}
-          {view === "code" && <CodeView change={change} diff={diff} error={diffError} onReload={loadDiff} {...itemProps} />}
+          {view === "code" && <CodeView change={change} diff={diff} error={diffError} onReload={loadDiff} focus={focus} {...itemProps} />}
         </main>
         <aside className="inspector">
           {selectedItem != null ? (

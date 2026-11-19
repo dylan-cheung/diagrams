@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { linkBetween, parseRef, tracedFrom } from "./change-items.ts";
+import { isTestFile, linkBetween, parseRef, tracedFrom } from "./change-items.ts";
 import { parseDiff } from "./git-diff.ts";
 
 describe("change items", () => {
@@ -8,6 +8,11 @@ describe("change items", () => {
     expect(parseRef("file:x")).toBeNull();
     expect(linkBetween("pseudo:p", "node:n")).toEqual({ from: "node:n", to: "pseudo:p" });
     expect(linkBetween("idea:i", "pseudo:p")).toBe("A link connects an item to an item in the next view up or down.");
+  });
+
+  test("finds test files by folder or name", () => {
+    expect(["server/tests/unit/chats.test.js", "a/__tests__/b.js", "db.test.ts", "x.spec.tsx", "test/helpers.js"].every(isTestFile)).toBe(true);
+    expect(["server/models/chat.js", "latest.ts", "contest/a.ts", "README.md"].some(isTestFile)).toBe(false);
   });
 
   test("tracing goes up and down, but not back down from an item above", () => {

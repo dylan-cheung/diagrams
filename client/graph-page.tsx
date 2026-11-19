@@ -15,7 +15,7 @@ import { useVocabulary } from "./vocabulary.ts";
 import { EMPTY_HISTORY, movedTo, recordChange, snapshotOf, stateAt, type History } from "./history.ts";
 import { GraphSections, HistorySection, VersionPanel, type Shown } from "./view-panel.tsx";
 
-type GraphRoute = Exclude<Route, { page: "list" } | { page: "guide" }>;
+type GraphRoute = Extract<Route, { graphId: string }>;
 
 const DIRECTIONS: { direction: LayoutDirection; name: string }[] = [
   { direction: "horizontal", name: "Horizontal" },

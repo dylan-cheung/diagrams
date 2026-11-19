@@ -1,6 +1,6 @@
 import { hc, type ClientResponse } from "hono/client";
 import type { AppType } from "../api.ts";
-import type { DraftState, EdgeInput, FinishInput, FlowInput, GraphInput, GraphPatch, LayoutInput, NodeInput, Position } from "../model.ts";
+import type { ChangeInput, DraftState, EdgeInput, FinishInput, FlowInput, GraphInput, GraphPatch, LayoutInput, NodeInput, Position } from "../model.ts";
 
 export class ApiError extends Error {
   constructor(readonly errors: string[]) {
@@ -23,6 +23,7 @@ const client = hc<AppType>("/");
 const nodes = client.api.nodes;
 const edges = client.api.edges;
 const graphs = client.api.graphs;
+const changes = client.api.changes;
 
 export const api = {
   vocabulary: () => unwrap(client.api.vocabulary.$get()),
@@ -72,4 +73,11 @@ export const api = {
   createEdgeInGraph: (id: string, input: EdgeInput) => unwrap(graphs[":id"].edges.$post({ param: { id }, json: input })),
   removeEdgeFromGraph: (id: string, edgeId: string) =>
     unwrap(graphs[":id"].edges[":edgeId"].$delete({ param: { id, edgeId } })),
+
+  listChanges: () => unwrap(changes.$get()),
+  getChange: (id: string) => unwrap(changes[":id"].$get({ param: { id } })),
+  createChange: (input: ChangeInput) => unwrap(changes.$post({ json: input })),
+  updateChange: (id: string, input: Partial<ChangeInput>) => unwrap(changes[":id"].$patch({ param: { id }, json: input })),
+  deleteChange: (id: string) => unwrap(changes[":id"].$delete({ param: { id } })),
+  diffChange: (id: string) => unwrap(changes[":id"].diff.$get({ param: { id } })),
 };

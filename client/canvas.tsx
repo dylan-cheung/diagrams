@@ -35,7 +35,7 @@ export type FlowPath = { steps: Map<string, number[]>; edges: Set<string>; curre
 type Design = { type: string | null; status: string | null };
 type StepState = "current" | "pending" | undefined;
 type EntityNode = Node<
-  Design & { name: string; labels: string[]; mark: ChangeStatus | undefined; steps: number[] | undefined; stepState: StepState },
+  Design & { name: string; labels: string[]; mark: ChangeStatus | undefined; steps: number[] | undefined; onPath: boolean | undefined; stepState: StepState },
   "entity"
 >;
 type EdgeFocus = "hovered" | "dimmed" | undefined;
@@ -79,7 +79,7 @@ const EntityNodeView = ({ data, selected }: NodeProps<EntityNode>) => {
   const status = termName(vocabulary.statuses, data.status);
   return (
     <div
-      className={`entity${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}${data.steps == null ? "" : pathClass(data.steps.length > 0)}${stepClass(data.stepState)}`}
+      className={`entity${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}${pathClass(data.onPath)}${stepClass(data.stepState)}`}
       style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
     >
       {data.steps != null && data.steps.length > 0 && <div className="step-badge">{data.steps.join(", ")}</div>}
@@ -150,7 +150,8 @@ const PRO_OPTIONS = { hideAttribution: true };
 const NODE_TYPES = { entity: EntityNodeView };
 const EDGE_TYPES = { floating: FloatingEdgeView };
 
-const toFlowNodes = (view: GraphContent, selection: Selection, marks: Marks | undefined, path: FlowPath | undefined): EntityNode[] =>
+// With a focus, the canvas shows the nodes in it and dims the rest, as it does for the path of a flow.
+const toFlowNodes = (view: GraphContent, selection: Selection, marks: Marks | undefined, path: FlowPath | undefined, focus: Set<string> | undefined): EntityNode[] =>
   view.nodes.map((node) => ({
     id: node.id,
     type: "entity",
@@ -162,6 +163,7 @@ const toFlowNodes = (view: GraphContent, selection: Selection, marks: Marks | un
       labels: node.labels,
       mark: marks?.nodes.get(node.id),
       steps: path == null ? undefined : (path.steps.get(node.id) ?? []),
+      onPath: path != null ? path.steps.has(node.id) : focus?.has(node.id),
       stepState: path?.current === node.id ? "current" : path?.pending?.has(node.id) === true ? "pending" : undefined,
     },
     selected: selection?.kind === "node" && selection.id === node.id,
@@ -243,6 +245,7 @@ const toFlowEdges = (
   onSelect: (selection: Selection) => void,
   savedRoutes: Map<string, Point[]> | undefined,
   path: FlowPath | undefined,
+  focus: Set<string> | undefined,
 ): FloatingEdge[] => {
   const slots = assignParallelSlots(view.edges);
   const routes = fittingRoutes(view, nodes, savedRoutes);
@@ -265,7 +268,7 @@ const toFlowEdges = (
       labelAt: places.get(edge.id),
       route: routes.get(edge.id),
       focus: hovered == null ? undefined : hovered === edge.id ? "hovered" : "dimmed",
-      onPath: path == null ? undefined : path.edges.has(edge.id),
+      onPath: path != null ? path.edges.has(edge.id) : focus == null ? undefined : focus.has(edge.source) && focus.has(edge.target),
       pending: path?.pending?.has(edge.id) === true,
       onHover: (on: boolean) => setHovered((current) => (on ? edge.id : current === edge.id ? null : current)),
       onSelect: () => onSelect({ kind: "edge", id: edge.id }),
@@ -284,6 +287,7 @@ export const GraphCanvas = ({
   marks,
   routes,
   path,
+  focus,
   onAddNode,
   paletteFooter,
   readOnly = false,
@@ -298,20 +302,21 @@ export const GraphCanvas = ({
   marks?: Marks;
   routes?: Map<string, Point[]>;
   path?: FlowPath;
+  focus?: Set<string>;
   onAddNode?: (type: string | null, position: Position) => void;
   paletteFooter?: ReactNode;
   readOnly?: boolean;
   children?: ReactNode;
 }) => {
-  const [nodes, setNodes, onNodesChange] = useNodesState<EntityNode>(toFlowNodes(view, selection, marks, path));
-  useEffect(() => setNodes(toFlowNodes(view, selection, marks, path)), [view, selection, marks, path, setNodes]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<EntityNode>(toFlowNodes(view, selection, marks, path, focus));
+  useEffect(() => setNodes(toFlowNodes(view, selection, marks, path, focus)), [view, selection, marks, path, focus, setNodes]);
   const vocabulary = useVocabulary();
   const [hovered, setHovered] = useState<string | null>(null);
   const { screenToFlowPosition } = useReactFlow();
   const canAdd = onAddNode != null && !readOnly;
   const edges = useMemo(
-    () => toFlowEdges(view, nodes, vocabulary, selection, marks, hovered, setHovered, onSelect, routes, path),
-    [view, nodes, vocabulary, selection, marks, hovered, onSelect, routes, path],
+    () => toFlowEdges(view, nodes, vocabulary, selection, marks, hovered, setHovered, onSelect, routes, path, focus),
+    [view, nodes, vocabulary, selection, marks, hovered, onSelect, routes, path, focus],
   );
 
   return (

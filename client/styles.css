@@ -1590,7 +1590,206 @@ button.link.danger {
   z-index: 5;
 }
 
+/* The four views of a change. */
+.view-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 8px;
+  flex-wrap: wrap;
+}
+
+.view-tabs a {
+  padding: 4px 10px;
+  border-radius: 6px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.view-tabs a:hover {
+  color: var(--ink);
+  background: var(--chip);
+}
+
+.view-tabs a[aria-current="page"] {
+  color: var(--ink);
+  background: var(--chip);
+  font-weight: 600;
+}
+
+.change-main {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.change-doc {
+  display: grid;
+  gap: 10px;
+  max-width: 860px;
+  padding: 16px;
+}
+
+.change-items {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.change-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  transition: opacity 0.15s;
+}
+
+.change-item.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.change-item.linked {
+  border-color: var(--accent);
+}
+
+.change-item.dimmed {
+  opacity: 0.4;
+}
+
+.linking .change-item,
+.diff-hunk {
+  cursor: pointer;
+}
+
+.idea-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+}
+
+.item-handle {
+  min-width: 26px;
+  padding: 2px 6px;
+  border: 0;
+  background: var(--chip);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.idea-item .item-text {
+  flex: 1;
+  min-width: 0;
+  border-color: transparent;
+  background: none;
+}
+
+.idea-item span.item-text {
+  padding: 5px 8px;
+}
+
+.item-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+}
+
+.item-head select {
+  width: auto;
+  padding: 1px 4px;
+  font-size: 12px;
+}
+
+.item-code {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 8px 8px;
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pseudo-lanes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(200px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  min-width: 0;
+}
+
+.pseudo-lane {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.add-block {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.diff-file {
+  display: grid;
+  gap: 8px;
+}
+
+.diff-file h2 {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.diff-hunk .item-head .mono {
+  overflow-wrap: anywhere;
+}
+
+.line-added {
+  color: var(--added);
+  background: var(--added-soft);
+}
+
+.line-removed {
+  color: var(--removed);
+  background: var(--removed-soft);
+}
+
+.link-banner {
+  color: var(--ink);
+  background: var(--accent-soft);
+}
+
+.link-group {
+  display: grid;
+  gap: 6px;
+}
+
+.link-group h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.link-group > button {
+  justify-self: start;
+}
+
+.endpoints.broken,
+button.link.broken {
+  color: var(--danger);
+}
+
 @media (max-width: 640px) {
+  .pseudo-lanes {
+    grid-template-columns: 1fr;
+  }
+
   .body,
   .review {
     grid-template-columns: 1fr;

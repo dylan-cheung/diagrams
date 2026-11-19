@@ -1,10 +1,22 @@
 import { useMemo, useSyncExternalStore, type AnchorHTMLAttributes, type MouseEvent } from "react";
+import { CHANGE_VIEWS, type ChangeView } from "../change-items.ts";
 
-export type Route = { page: "list" } | { page: "guide" } | { page: "graph"; graphId: string } | { page: "proposal"; graphId: string; proposalId: string };
+export type Route =
+  | { page: "list" }
+  | { page: "guide" }
+  | { page: "graph"; graphId: string }
+  | { page: "proposal"; graphId: string; proposalId: string }
+  | { page: "changes" }
+  | { page: "change"; changeId: string; view: ChangeView };
 
 export const parsePath = (pathname: string): Route => {
   const [root, graphId, part, proposalId] = pathname.split("/").filter((segment) => segment !== "").map(decodeURIComponent);
   if (root === "guide") return { page: "guide" };
+  if (root === "changes") {
+    if (graphId == null) return { page: "changes" };
+    const view = CHANGE_VIEWS.find((item) => item.view === part)?.view ?? "idea";
+    return { page: "change", changeId: graphId, view };
+  }
   if (root !== "graphs" || graphId == null) return { page: "list" };
   if (part === "proposals" && proposalId != null) return { page: "proposal", graphId, proposalId };
   // A graph has one page. Old links to /graphs/{id}/edit open it too.
@@ -14,6 +26,8 @@ export const parsePath = (pathname: string): Route => {
 export const routePath = (route: Route) => {
   if (route.page === "list") return "/";
   if (route.page === "guide") return "/guide";
+  if (route.page === "changes") return "/changes";
+  if (route.page === "change") return `/changes/${encodeURIComponent(route.changeId)}/${route.view}`;
   const base = `/graphs/${encodeURIComponent(route.graphId)}`;
   if (route.page === "proposal") return `${base}/proposals/${encodeURIComponent(route.proposalId)}`;
   return base;

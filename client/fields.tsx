@@ -1,6 +1,65 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { formatPropertyValue, parsePropertyValue, type Properties, type Term } from "../model.ts";
 
+// The attributes that stop password managers from offering to fill a text field.
+export const NO_FILL = { autoComplete: "off", "data-1p-ignore": true, "data-lpignore": "true", "data-bwignore": true, "data-form-type": "other" } as const;
+
+// A text without a label, edited in place. It saves when it loses focus. With required, an empty text keeps the old one.
+export const InlineText = ({
+  value,
+  label,
+  onCommit,
+  onFocus,
+  placeholder,
+  multiline = false,
+  required = false,
+  className,
+}: {
+  value: string;
+  label: string;
+  onCommit: (value: string) => void;
+  onFocus?: () => void;
+  placeholder?: string;
+  multiline?: boolean;
+  required?: boolean;
+  className?: string;
+}) => {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  const commit = () => {
+    if (required && text.trim() === "") setText(value);
+    else if (text !== value) onCommit(text);
+  };
+  const shared = {
+    className,
+    value: text,
+    placeholder,
+    "aria-label": label,
+    onFocus,
+    onBlur: commit,
+    ...NO_FILL,
+  };
+  return multiline ? (
+    <textarea
+      {...shared}
+      rows={Math.max(2, text.split("\n").length)}
+      onChange={(e) => setText(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") setText(value);
+      }}
+    />
+  ) : (
+    <input
+      {...shared}
+      onChange={(e) => setText(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") setText(value);
+      }}
+    />
+  );
+};
+
 export const TextField = ({
   label,
   value,

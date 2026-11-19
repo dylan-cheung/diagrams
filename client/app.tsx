@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Vocabulary } from "../model.ts";
 import { api } from "./api.ts";
+import { ChangeList } from "./change-list.tsx";
+import { ChangePage } from "./change-page.tsx";
 import { GraphList } from "./graph-list.tsx";
 import { GraphPage } from "./graph-page.tsx";
 import { Guide } from "./guide.tsx";
@@ -17,7 +19,17 @@ export const App = () => {
 
   return (
     <VocabularyContext value={vocabulary}>
-      {route.page === "list" ? <GraphList /> : route.page === "guide" ? <Guide /> : <GraphPage key={route.graphId} route={route} />}
+      {route.page === "list" ? (
+        <GraphList />
+      ) : route.page === "guide" ? (
+        <Guide />
+      ) : route.page === "changes" ? (
+        <ChangeList />
+      ) : route.page === "change" ? (
+        <ChangePage key={route.changeId} changeId={route.changeId} view={route.view} />
+      ) : (
+        <GraphPage key={route.graphId} route={route} />
+      )}
     </VocabularyContext>
   );
 };

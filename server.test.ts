@@ -1,4 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { openGraphStore } from "./db.ts";
 import { createServer } from "./server.ts";
 
@@ -143,12 +146,55 @@ describe("runs", () => {
   });
 });
 
+describe("changes", () => {
+  const git = (repo: string, ...args: string[]) => {
+    const result = Bun.spawnSync(["git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.com", ...args]);
+    if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+  };
+
+  test("shows the diff of the branch of a change, and links a block to a hunk", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "diagram-change-"));
+    git(repo, "init", "-q", "-b", "main");
+    writeFileSync(join(repo, "app.ts"), "export const a = 1;\n");
+    git(repo, "add", ".");
+    git(repo, "commit", "-q", "-m", "Start");
+    git(repo, "checkout", "-q", "-b", "feature");
+    writeFileSync(join(repo, "app.ts"), "export const a = 2;\n");
+    git(repo, "commit", "-q", "-am", "Change a");
+
+    const created = await send("POST", "/api/changes", {
+      name: "Change a",
+      repo,
+      base: "main",
+      branch: "feature",
+      blocks: [{ id: "set-a", layer: "store", text: "set a to 2" }],
+    });
+    expect(created.status).toBe(200);
+    const diff = (await send("GET", `/api/changes/${created.body.id}/diff`)).body;
+    expect(diff.files.map(({ path }: { path: string }) => path)).toEqual(["app.ts"]);
+    const hunk = diff.files[0].hunks[0];
+    expect(hunk.lines).toEqual(["-export const a = 1;", "+export const a = 2;"]);
+
+    const linked = await send("PATCH", `/api/changes/${created.body.id}`, { links: [{ from: "pseudo:set-a", to: `hunk:${hunk.id}` }] });
+    expect(linked.body.links).toEqual([{ from: "pseudo:set-a", to: `hunk:${hunk.id}` }]);
+    expect((await send("PATCH", `/api/changes/${created.body.id}`, { branch: "nope" })).status).toBe(200);
+    const failed = await send("GET", `/api/changes/${created.body.id}/diff`);
+    expect(failed.status).toBe(400);
+    expect(failed.body.errors[0]).toStartWith("git diff failed:");
+    expect((await send("DELETE", `/api/changes/${created.body.id}`)).status).toBe(204);
+    expect((await send("GET", `/api/changes/${created.body.id}`)).status).toBe(404);
+  });
+});
+
 describe("API docs", () => {
   test("the OpenAPI spec lists every route", async () => {
     const spec = (await send("GET", "/openapi.json")).body;
     expect(spec.openapi).toBe("3.1.0");
     expect(spec.info.title).toBe("Diagram API");
     expect(Object.keys(spec.paths).sort()).toEqual([
+      "/api/changes",
+      "/api/changes/{id}",
+      "/api/changes/{id}/diff",
       "/api/edges",
       "/api/edges/{id}",
       "/api/graphs",

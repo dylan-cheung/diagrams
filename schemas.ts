@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { PSEUDO_LAYERS } from "./change-items.ts";
 
 const Id = z.string().openapi({ example: "6343537c-28f9-4dd8-943d-ef9abfb1fddf" });
 
@@ -442,6 +443,90 @@ export const DraftState = z
   })
   .openapi("DraftState", { description: "A state of the draft that the editor kept: its content with positions, and its edge routes." });
 
+export const PseudoLayer = z
+  .enum(PSEUDO_LAYERS, { error: `A layer is one of ${PSEUDO_LAYERS.join(", ")}.` })
+  .openapi("PseudoLayer", { description: "The layer of the code that a pseudocode block is in." });
+
+export const IdeaItem = z
+  .object({ id: Id, text: z.string().openapi({ example: "Each node of a flow maps to an intended step." }) })
+  .openapi("IdeaItem", { description: "One bullet point of the idea view." });
+
+export const PseudoBlock = z
+  .object({
+    id: Id,
+    layer: PseudoLayer,
+    text: z.string().openapi({ example: "on canvas click: add step with intentId of the step before" }),
+  })
+  .openapi("PseudoBlock", { description: "One block of the pseudocode view, in one layer." });
+
+export const ChangeLink = z
+  .object({
+    from: z.string().openapi({ description: "The item in the view above, as kind:id. The kind is idea, node or pseudo.", example: "idea:3f1c" }),
+    to: z.string().openapi({ description: "The item in the view below, as kind:id. The kind is node, pseudo or hunk.", example: "node:6343537c-28f9-4dd8-943d-ef9abfb1fddf" }),
+  })
+  .openapi("ChangeLink", {
+    description:
+      "A trace link between an item in one view and an item in the next view down: an idea item to a node of the concept graph, a node to a pseudocode block, or a pseudocode block to a diff hunk.",
+  });
+
+export const Change = z
+  .object({
+    id: Id,
+    name: z.string().openapi({ example: "Intended steps for flows" }),
+    notes: z.string().openapi({ description: "The goal and the notes of the idea view, in prose." }),
+    graphId: Id.nullable().openapi({ description: "The graph of the concept view. It is null until the change has one." }),
+    repo: z.string().openapi({ description: "The local path of the git repository of the code view.", example: "/Users/me/Projects/diagram" }),
+    base: z.string().openapi({ description: "The branch that the change starts from.", example: "main" }),
+    branch: z.string().openapi({ description: "The branch of the change. The code view shows the diff from base to this branch.", example: "intended-steps" }),
+    ideas: z.array(IdeaItem).openapi({ description: "The bullet points of the idea view, in order." }),
+    blocks: z.array(PseudoBlock).openapi({ description: "The blocks of the pseudocode view, in order." }),
+    links: z.array(ChangeLink),
+    createdAt: Timestamp,
+    updatedAt: Timestamp,
+  })
+  .openapi("Change", {
+    description:
+      "One change, in four views: the idea (notes and bullet points), the concepts (a graph), the pseudocode (blocks by layer) and the code (the diff of a branch). Trace links connect each item to the items in the next view that carry it out.",
+  });
+
+export const ChangeInput = z
+  .object({
+    name: Name("A change needs a name."),
+    notes: z.string().optional(),
+    graphId: z.string().min(1).nullable().optional().openapi({ description: "The id of a graph for the concept view." }),
+    repo: z.string().optional(),
+    base: z.string().optional(),
+    branch: z.string().optional(),
+    ideas: z
+      .array(z.object({ id: z.string().trim().min(1).optional(), text: Name("An idea item needs text.") }))
+      .optional()
+      .openapi({ description: "Replaces all the idea items. Omit the id of a new item, and the server makes one. Links in the same request can use the id." }),
+    blocks: z
+      .array(z.object({ id: z.string().trim().min(1).optional(), layer: PseudoLayer, text: z.string() }))
+      .optional()
+      .openapi({ description: "Replaces all the pseudocode blocks. Omit the id of a new block, and the server makes one." }),
+    links: z.array(ChangeLink).optional().openapi({ description: "Replaces all the links." }),
+  })
+  .openapi("ChangeInput", { description: "When an idea item or a block is removed, its links are removed too." });
+
+export const ChangePatch = ChangeInput.partial().openapi("ChangePatch");
+
+export const DiffHunk = z
+  .object({
+    id: z.string().openapi({ description: "The id of the hunk: a hash of its file and its changed lines. It does not use line numbers, so it stays the same after a rebase." }),
+    header: z.string().openapi({ example: "@@ -12,6 +12,8 @@ export const pathOf = (flow: Flow) => {" }),
+    lines: z.array(z.string()).openapi({ description: "The lines of the hunk, each with its first character: + added, - removed, or a space." }),
+  })
+  .openapi("DiffHunk");
+
+export const ChangeDiff = z
+  .object({
+    base: z.string(),
+    branch: z.string(),
+    files: z.array(z.object({ path: z.string(), hunks: z.array(DiffHunk) })),
+  })
+  .openapi("ChangeDiff", { description: "The diff of the branch of a change, from the point where it left the base branch." });
+
 export const ErrorBody = z
   .object({ errors: z.array(z.string()) })
   .openapi("Error", { example: { errors: ["The node does not exist."] } });
@@ -485,3 +570,11 @@ export type ChangeStatus = z.infer<typeof ChangeStatus>;
 export type NodeChange = z.infer<typeof NodeChange>;
 export type EdgeChange = z.infer<typeof EdgeChange>;
 export type GraphDiff = z.infer<typeof GraphDiff>;
+export type PseudoLayer = z.infer<typeof PseudoLayer>;
+export type IdeaItem = z.infer<typeof IdeaItem>;
+export type PseudoBlock = z.infer<typeof PseudoBlock>;
+export type ChangeLink = z.infer<typeof ChangeLink>;
+export type Change = z.infer<typeof Change>;
+export type ChangeInput = z.infer<typeof ChangeInput>;
+export type DiffHunk = z.infer<typeof DiffHunk>;
+export type ChangeDiff = z.infer<typeof ChangeDiff>;

@@ -2,9 +2,16 @@ import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { itemRef, linkBetween, parseRef } from "./change-items.ts";
 import { EMPTY_CONTENT, diffGraphs, toContent } from "./diff.ts";
+import { branchDiff, GitError } from "./git-diff.ts";
 import {
   EDGE_DESIGN_DEFAULTS,
+  type Change,
+  type ChangeInput,
+  type ChangeLink,
+  type IdeaItem,
+  type PseudoBlock,
   NODE_DESIGN_DEFAULTS,
   normalizeLabels,
   type DraftState,
@@ -179,6 +186,36 @@ const toFlow = (row: FlowRow): Flow => ({
   updatedAt: row.updated_at,
 });
 
+type ChangeRow = {
+  id: string;
+  name: string;
+  notes: string;
+  graph_id: string | null;
+  repo: string;
+  base: string;
+  branch: string;
+  ideas: string;
+  blocks: string;
+  links: string;
+  created_at: string;
+  updated_at: string;
+};
+
+const toChange = (row: ChangeRow): Change => ({
+  id: row.id,
+  name: row.name,
+  notes: row.notes,
+  graphId: row.graph_id,
+  repo: row.repo,
+  base: row.base,
+  branch: row.branch,
+  ideas: JSON.parse(row.ideas) as IdeaItem[],
+  blocks: JSON.parse(row.blocks) as PseudoBlock[],
+  links: JSON.parse(row.links) as ChangeLink[],
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
 const toRun = (row: RunRow): Run => ({
   id: row.id,
   graphId: row.graph_id,
@@ -323,6 +360,20 @@ CREATE TABLE IF NOT EXISTS runs (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS runs_graph ON runs(graph_id, flow_id);
+CREATE TABLE IF NOT EXISTS changes (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  graph_id TEXT REFERENCES graphs(id) ON DELETE SET NULL,
+  repo TEXT NOT NULL DEFAULT '',
+  base TEXT NOT NULL DEFAULT '',
+  branch TEXT NOT NULL DEFAULT '',
+  ideas TEXT NOT NULL DEFAULT '[]',
+  blocks TEXT NOT NULL DEFAULT '[]',
+  links TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 `;
 
 const ADDED_COLUMNS: [string, string, string][] = [
@@ -942,6 +993,71 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     return requireRun(graphId, runId);
   };
 
+  const changeById = db.query<ChangeRow, { id: string }>("SELECT * FROM changes WHERE id = $id");
+
+  const requireChange = (id: string) => {
+    const row = changeById.get({ id });
+    if (row == null) throw new StoreError("The change does not exist.", 404);
+    return toChange(row);
+  };
+
+  const withIds = <T extends { id?: string | undefined }>(items: T[], what: string) => {
+    const done = items.map((item) => ({ ...item, id: item.id ?? crypto.randomUUID() }));
+    if (new Set(done.map(({ id }) => id)).size < done.length) throw new StoreError(`Two ${what} have the same id.`, 400);
+    return done;
+  };
+
+  // The links of a change. Each link goes from an item to an item in the next view down. An idea item or a block must
+  // be in the change. A node or a hunk can be missing, because the graph and the branch change on their own: the editor
+  // shows such a link as broken.
+  const checkLinks = (links: ChangeLink[], own: Set<string>) => {
+    const seen = new Set<string>();
+    return links.flatMap(({ from, to }, index) => {
+      const link = linkBetween(from, to);
+      if (typeof link === "string") throw new StoreError(`Link ${index + 1}: ${link}`, 400);
+      if (link.from !== from) throw new StoreError(`Link ${index + 1}: from must be the item in the view above.`, 400);
+      for (const ref of [from, to]) {
+        const kind = parseRef(ref)?.kind;
+        if ((kind === "idea" || kind === "pseudo") && !own.has(ref)) throw new StoreError(`Link ${index + 1}: the item ${ref} is not in the change.`, 400);
+      }
+      const key = `${from} ${to}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ from, to }];
+    });
+  };
+
+  const saveChange = (id: string, input: Partial<ChangeInput>, stamp: string, before: Change | null) => {
+    if (input.graphId != null) requireGraph(input.graphId);
+    const ideas = input.ideas != null ? withIds(input.ideas, "idea items").map(({ id: itemId, text }) => ({ id: itemId, text: text.trim() })) : (before?.ideas ?? []);
+    const blocks = input.blocks != null ? withIds(input.blocks, "blocks") : (before?.blocks ?? []);
+    const own = new Set([...ideas.map(({ id: itemId }) => itemRef("idea", itemId)), ...blocks.map(({ id: itemId }) => itemRef("pseudo", itemId))]);
+    const kept = (ref: string) => {
+      const kind = parseRef(ref)?.kind;
+      return (kind !== "idea" && kind !== "pseudo") || own.has(ref);
+    };
+    const links = input.links != null ? checkLinks(input.links, own) :(before?.links ?? []).filter(({ from, to }) => kept(from) && kept(to));
+    db.query(
+      `INSERT INTO changes (id, name, notes, graph_id, repo, base, branch, ideas, blocks, links, created_at, updated_at)
+       VALUES ($id, $name, $notes, $graphId, $repo, $base, $branch, $ideas, $blocks, $links, $stamp, $stamp)
+       ON CONFLICT(id) DO UPDATE SET name = $name, notes = $notes, graph_id = $graphId, repo = $repo, base = $base, branch = $branch,
+         ideas = $ideas, blocks = $blocks, links = $links, updated_at = $stamp`,
+    ).run({
+      id,
+      name: input.name?.trim() ?? before?.name ?? "",
+      notes: input.notes ?? before?.notes ?? "",
+      graphId: input.graphId === undefined ? (before?.graphId ?? null) : input.graphId,
+      repo: input.repo?.trim() ?? before?.repo ?? "",
+      base: input.base?.trim() ?? before?.base ?? "",
+      branch: input.branch?.trim() ?? before?.branch ?? "",
+      ideas: JSON.stringify(ideas),
+      blocks: JSON.stringify(blocks),
+      links: JSON.stringify(links),
+      stamp,
+    });
+    return requireChange(id);
+  };
+
   const diffProposal = (graphId: string, proposalId: string, against: number | "latest" | "draft") => {
     const proposal = toProposal(requireProposal(graphId, proposalId));
     if (against === "draft") return { against, diff: diffGraphs(toContent(view(graphId)), proposal.content) };
@@ -1123,6 +1239,24 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     applyProposal,
     restoreDraft,
     diffProposal,
+
+    listChanges: () => db.query<ChangeRow, []>("SELECT * FROM changes ORDER BY updated_at DESC, rowid DESC").all().map(toChange),
+    getChange: requireChange,
+    createChange: (input: ChangeInput) => saveChange(crypto.randomUUID(), input, now(), null),
+    updateChange: (id: string, input: Partial<ChangeInput>) => saveChange(id, input, now(), requireChange(id)),
+    deleteChange: (id: string) => {
+      requireChange(id);
+      db.query("DELETE FROM changes WHERE id = $id").run({ id });
+    },
+    diffChange: (id: string) => {
+      const change = requireChange(id);
+      try {
+        return branchDiff(change.repo, change.base, change.branch);
+      } catch (error) {
+        if (error instanceof GitError) throw new StoreError(error.message, 400);
+        throw error;
+      }
+    },
 
     close: () => db.close(),
   };

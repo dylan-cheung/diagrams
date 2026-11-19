@@ -5,6 +5,10 @@ import {
   AdvanceInput,
   ApplyInput,
   ApplyResult,
+  Change,
+  ChangeDiff,
+  ChangeInput,
+  ChangePatch,
   DraftState,
   Edge,
   EdgeInput,
@@ -70,7 +74,7 @@ const body = <T extends z.ZodType>(schema: T) => ({ body: { content: { "applicat
 
 const errors = {
   400: json(ErrorBody, "The request is not valid."),
-  404: json(ErrorBody, "A graph, node, edge, flow, run or proposal in the path does not exist."),
+  404: json(ErrorBody, "A graph, node, edge, flow, run, proposal or change in the path does not exist."),
   409: json(ErrorBody, "The graph name is already used, the proposal is not open, or the run cannot change."),
 };
 
@@ -79,7 +83,7 @@ const noContent = { 204: { description: "Done." } };
 const route = <const T extends Parameters<typeof createRoute>[0]>(config: T) =>
   createRoute({ ...config, responses: { ...errors, ...config.responses } });
 
-const tag = { vocabulary: ["Vocabulary"], nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], flows: ["Flows"], runs: ["Runs"], proposals: ["Proposals"] };
+const tag = { vocabulary: ["Vocabulary"], nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], flows: ["Flows"], runs: ["Runs"], proposals: ["Proposals"], changes: ["Changes"] };
 
 export const createApi = (store: GraphStore) => {
   const app = new OpenAPIHono({
@@ -627,6 +631,68 @@ export const createApi = (store: GraphStore) => {
         const { id, proposalId } = c.req.valid("param");
         return c.json(store.discardProposal(id, proposalId), 200);
       },
+    )
+    .openapi(
+      route({
+        method: "get",
+        path: "/api/changes",
+        tags: tag.changes,
+        summary: "List the changes",
+        description:
+          "A change has four views: the idea (notes and bullet points), the concepts (a graph), the pseudocode (blocks by layer) and the code (the diff of a git branch). Trace links connect each item to the items in the next view down that carry it out.",
+        responses: { 200: json(z.array(Change), "Every change, the most recently changed first.") },
+      }),
+      (c) => c.json(store.listChanges(), 200),
+    )
+    .openapi(
+      route({
+        method: "post",
+        path: "/api/changes",
+        tags: tag.changes,
+        summary: "Add a change",
+        description:
+          "Give the idea items and the blocks your own ids to link them in the same request. A link goes from an item to an item in the next view down: idea to node, node to pseudo, or pseudo to hunk. Items are kind:id, for example idea:intro or node:<node id>. The id of a hunk comes from GET /api/changes/{id}/diff.",
+        request: { ...body(ChangeInput) },
+        responses: { 200: json(Change, "The new change.") },
+      }),
+      (c) => c.json(store.createChange(c.req.valid("json")), 200),
+    )
+    .openapi(
+      route({ method: "get", path: "/api/changes/{id}", tags: tag.changes, summary: "Get a change", request: { params: IdParams }, responses: { 200: json(Change, "The change.") } }),
+      (c) => c.json(store.getChange(c.req.valid("param").id), 200),
+    )
+    .openapi(
+      route({
+        method: "patch",
+        path: "/api/changes/{id}",
+        tags: tag.changes,
+        summary: "Change a change",
+        description:
+          "Omitted fields keep their value. ideas, blocks and links each replace the whole list. When an idea item or a block is removed, its links are removed too. Set graphId to null to remove the graph of the concept view.",
+        request: { params: IdParams, ...body(ChangePatch) },
+        responses: { 200: json(Change, "The changed change.") },
+      }),
+      (c) => c.json(store.updateChange(c.req.valid("param").id, c.req.valid("json")), 200),
+    )
+    .openapi(
+      route({ method: "delete", path: "/api/changes/{id}", tags: tag.changes, summary: "Delete a change", description: "Its graph stays.", request: { params: IdParams }, responses: noContent }),
+      (c) => {
+        store.deleteChange(c.req.valid("param").id);
+        return c.body(null, 204);
+      },
+    )
+    .openapi(
+      route({
+        method: "get",
+        path: "/api/changes/{id}/diff",
+        tags: tag.changes,
+        summary: "Get the code view of a change",
+        description:
+          "Runs git diff base...branch in the repository of the change: the changes on the branch since it left the base branch. Each hunk has an id that links can use. The repository does not change.",
+        request: { params: IdParams },
+        responses: { 200: json(ChangeDiff, "The files and hunks of the diff.") },
+      }),
+      (c) => c.json(store.diffChange(c.req.valid("param").id), 200),
     );
 
   app.doc31("/openapi.json", {
@@ -635,7 +701,7 @@ export const createApi = (store: GraphStore) => {
       title: "Diagram API",
       version: "4.4.0",
       description:
-        "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A flow is a sequence of steps through a graph: one specific path, such as an edge case of a feature. A run is one instance of a flow on a published version. A published version is a copy of a graph, with its flows, that does not change. A proposal is a proposed graph that you compare with a version before you apply it. The Guide page of the app (/guide) explains each part.",
+        "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A flow is a sequence of steps through a graph: one specific path, such as an edge case of a feature. A run is one instance of a flow on a published version. A published version is a copy of a graph, with its flows, that does not change. A proposal is a proposed graph that you compare with a version before you apply it. A change is one code change in four views (idea, concepts, pseudocode and code) with trace links between them. The Guide page of the app (/guide) explains each part.",
     },
   });
   app.get("/docs", Scalar({ url: "/openapi.json", pageTitle: "Diagram API", showDeveloperTools: "never" }));

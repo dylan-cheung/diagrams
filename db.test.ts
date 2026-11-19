@@ -662,3 +662,44 @@ describe("restore the draft", () => {
     expect(restored.edges.map(({ id, source, target, label, route }) => [id, source, target, label, route])).toEqual([[ab, a, b, "calls", route]]);
   });
 });
+
+describe("changes", () => {
+  test("a change keeps its items and the links between next views", () => {
+    const graph = store.createGraph({ name: "concepts", description: "Test graph." }).id;
+    const node = store.createNodeInGraph(graph, { name: "Intended step" }, null).id;
+    const change = store.createChange({
+      name: "Intended steps",
+      graphId: graph,
+      ideas: [{ id: "goal", text: " Map each node to a step. " }, { text: "Show unmapped nodes." }],
+      blocks: [{ id: "save", layer: "store", text: "save intents" }],
+      links: [
+        { from: "idea:goal", to: `node:${node}` },
+        { from: `node:${node}`, to: "pseudo:save" },
+        { from: "pseudo:save", to: "hunk:abc" },
+        { from: "idea:goal", to: `node:${node}` },
+      ],
+    });
+    expect(change.ideas[0]).toEqual({ id: "goal", text: "Map each node to a step." });
+    expect(change.links).toHaveLength(3);
+    expect(store.listChanges().map(({ name }) => name)).toEqual(["Intended steps"]);
+
+    const removed = store.updateChange(change.id, { blocks: [] });
+    expect(removed.links).toEqual([{ from: "idea:goal", to: `node:${node}` }]);
+    expect(() => store.updateChange(change.id, { links: [{ from: "idea:goal", to: "pseudo:x" }] })).toThrow("Link 1: A link connects an item to an item in the next view up or down.");
+    expect(() => store.updateChange(change.id, { links: [{ from: "node:n", to: "idea:goal" }] })).toThrow("Link 1: from must be the item in the view above.");
+    expect(() => store.updateChange(change.id, { links: [{ from: "idea:nope", to: "node:n" }] })).toThrow("Link 1: the item idea:nope is not in the change.");
+    expect(() => store.updateChange(change.id, { graphId: "nope" })).toThrow("The graph does not exist.");
+
+    store.deleteGraph(graph);
+    expect(store.getChange(change.id).graphId).toBeNull();
+    store.deleteChange(change.id);
+    expect(() => store.getChange(change.id)).toThrow("The change does not exist.");
+  });
+
+  test("the diff of a change needs a repository and branches", () => {
+    const change = store.createChange({ name: "No branch" });
+    expect(() => store.diffChange(change.id)).toThrow("The change has no repository.");
+    store.updateChange(change.id, { repo: "/tmp", base: "main", branch: "--output=x" });
+    expect(() => store.diffChange(change.id)).toThrow('The change branch cannot start with "-".');
+  });
+});

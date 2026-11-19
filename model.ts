@@ -1,7 +1,15 @@
 import type { PropertyValue } from "./schemas.ts";
 
 export type {
+  Change,
+  ChangeDiff,
+  ChangeInput,
+  ChangeLink,
   ChangeStatus,
+  DiffHunk,
+  IdeaItem,
+  PseudoBlock,
+  PseudoLayer,
   ContentEdge,
   ContentNode,
   DraftState,

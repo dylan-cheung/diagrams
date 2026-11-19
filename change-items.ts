@@ -5,11 +5,11 @@ export const PSEUDO_LAYERS = ["ui", "api", "store", "data"] as const;
 export type ChangeView = "idea" | "concepts" | "pseudocode" | "code";
 
 // The views from the top down. A link goes from an item in one view to an item in the next view down.
-export const CHANGE_VIEWS: { view: ChangeView; kind: ItemKind; name: string }[] = [
-  { view: "idea", kind: "idea", name: "Idea" },
-  { view: "concepts", kind: "node", name: "Concepts" },
-  { view: "pseudocode", kind: "pseudo", name: "Pseudocode" },
-  { view: "code", kind: "hunk", name: "Code" },
+export const CHANGE_VIEWS: { view: ChangeView; kind: ItemKind; name: string; item: string }[] = [
+  { view: "idea", kind: "idea", name: "Idea", item: "Point" },
+  { view: "concepts", kind: "node", name: "Concepts", item: "Concept" },
+  { view: "pseudocode", kind: "pseudo", name: "Pseudocode", item: "Block" },
+  { view: "code", kind: "hunk", name: "Code", item: "Hunk" },
 ];
 
 export type ItemKind = "idea" | "node" | "pseudo" | "hunk";

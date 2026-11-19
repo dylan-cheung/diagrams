@@ -13,6 +13,7 @@ The app uses the labeled property graph model of ISO GQL (ISO/IEC 39075). In gra
 | Graph | `id`, `name`, `description` + its nodes (with `x`, `y`) and edges | A named subgraph. Every node and edge is in a graph: you create them only in a graph (`POST /api/graphs/{id}/nodes` and `.../edges`), and when no graph holds one any more, it is deleted. The API can also put one node in many graphs, with a different position in each. A graph can include an edge only if it includes both nodes. The description says what the graph is for. It is required when you create a graph. |
 | Flow | `id`, `graphId`, `name`, `description`, `steps[]` (`nodeId`, `edgeId`) | One specific path through a graph, for example the main path of a feature or an edge case. A graph can have many flows. Each step after the first follows an edge of the graph from the node of the step before. A flow is part of the draft, so a publish saves it in the version. |
 | Run | `id`, `graphId`, `version`, `flowId`, `label`, `status`, `note`, `properties{}`, `events[]` (`step`, `nodeId`, `at`, `note`), `startedAt`, `endedAt` | One instance of a flow on a published version. `status` is `running`, `completed`, `failed` or `cancelled`. The last event is the current step. Runs stay after the graph is deleted. |
+| Change | `id`, `name`, `notes`, `graphId`, `repo`, `base`, `branch`, `ideas[]` (`id`, `text`), `blocks[]` (`id`, `layer`, `text`), `links[]` (`from`, `to`) | One code change in four views: the idea (notes and points), the concepts (a graph), the pseudocode (blocks in the layers `ui`, `api`, `store` and `data`) and the code (the diff of a git branch). A link connects an item to an item in the next view down. |
 | Version | `graphId`, `version`, `hash`, `publishedAt`, `view` | A published copy of a graph that does not change. `view` holds the graph, its nodes with positions, and its edges as they were at publish time. Versions stay after the graph is deleted. |
 
 Property values are strings, numbers, booleans or `null`. Use `properties` for extensible metadata.
@@ -60,6 +61,23 @@ A run is one instance of a flow: one pass through its steps, for example one cal
 3. `POST .../runs/{runId}/finish` with `status` `completed`, `failed` or `cancelled` (and an optional `note`) ends it. A run can end at any step, and it does not change after that.
 4. `GET /api/graphs/{id}/runs` lists the runs, newest first. Add `?flowId=` for the runs of one flow.
 
+### Changes
+
+A change shows one code change in four views, from the general idea to the code. Trace links connect each item to the items in the next view that carry it out.
+
+| View | Items | Kind in a link |
+|---|---|---|
+| Idea | The points (`ideas`). The notes are prose without links. | `idea:<id>` |
+| Concepts | The nodes of the graph of the change (`graphId`) | `node:<node id>` |
+| Pseudocode | The blocks, each in one layer | `pseudo:<id>` |
+| Code | The hunks of `git diff base...branch` in `repo` | `hunk:<hunk id>` |
+
+- `POST /api/changes` adds a change, and `PATCH /api/changes/{id}` changes it. `ideas`, `blocks` and `links` each replace the whole list. Give items your own ids to link them in the same request. When a point or a block is removed, its links are removed too.
+- A link goes `from` an item `to` an item in the next view down: idea to node, node to pseudo, or pseudo to hunk.
+- `GET /api/changes/{id}/diff` runs git in the repository and returns the files and hunks. The id of a hunk is a hash of its file and its changed lines, without line numbers, so it stays the same after a rebase. A link to a node or a hunk that is gone stays, and the editor shows it in red.
+- Deleting the graph of a change sets `graphId` to null. Deleting a change does not delete its graph.
+- This is the first version: edits do not move into the other views yet.
+
 ### Proposals
 
 A proposal is a changed copy of a graph that you review before it changes the graph. Claude (or any API client) makes one; you compare it with a published version and then apply or discard it.
@@ -100,6 +118,7 @@ The app opens at http://127.0.0.1:4848.
 ## Use
 
 - **Walkthrough graph** (`/graphs/walkthrough`): a realistic example that uses every node type, relationship type and status. It has two flows: the main path ("Small claim is paid at once") and an edge case ("Large claim needs an adjuster"). Each flow has two example runs on version 1: one completed, and one that is still running or failed. The server makes it and publishes version 1 at start when the database does not have it, so it comes back after a delete. The data is in `walkthrough.ts`.
+- **Changes** (`/changes`, in the top bar): the table of changes. Click **+** to add one with a name, a repository, a base branch and a branch. A change page (`/changes/{id}/{view}`) has a tab for each view: **Idea**, **Concepts**, **Pseudocode** and **Code**. Click an item to select it. When you switch tabs, the items that trace to it stay marked, the rest are dimmed, and each tab shows how many items are linked. The panel lists the links of the selected item in the next view up and down. **Link items in …** opens that view in link mode: a click on an item there links it to the selected item, or removes the link. The concept view shows the graph read-only; **Edit the graph** opens it.
 - **Guide** (`/guide`, in the top bar next to **Graphs** and **API**) explains the parts of a graph: node types, edges, statuses, intent, the kinds of graph you can make, versions and proposals. It shows the current vocabulary in the same look as the canvas.
 - The first page is a table of graphs. Search it, and click a column name to sort it. The table shows the latest version, a **draft** mark when the draft has changes that are not published, and the number of open proposals. Click **+** to add a graph with a name and a description of its purpose. Click **…** at the end of a row for actions on that graph. **Delete** deletes the graph after you confirm.
 - Click a graph to open its draft (`/graphs/{id}`). A floating group at the top left of the canvas shows **←** (back to the list of graphs), the graph name (click it to rename the graph) and **⋮**, a menu with **Delete graph**. The draft is always editable, and each change saves at once. The status next to **Publish** at the top right of the canvas says **Saving…** while a change is on its way, and then if the draft has changes since the latest version. Edit the graph purpose in the panel, add nodes from the bar on the left of the canvas (one button for each node type in the vocabulary, and one for a node without a type: drag it onto the canvas, or click it to add the node in the middle of the view), and click **Publish** to save a version. The app shows only the nodes of the open graph.

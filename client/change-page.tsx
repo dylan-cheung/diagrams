@@ -36,7 +36,10 @@ export const ChangePage = ({ changeId, view }: { changeId: string; view: ChangeV
         setMissing(true);
         setErrors(errorsOf(error));
       });
-    void api.listGraphs().then(setGraphs);
+    api
+      .listGraphs()
+      .then(setGraphs)
+      .catch((error: unknown) => setErrors(errorsOf(error)));
   }, [changeId]);
 
   const graphId = change?.graphId ?? null;
@@ -86,6 +89,11 @@ export const ChangePage = ({ changeId, view }: { changeId: string; view: ChangeV
     () => (focus == null ? undefined : new Set([...focus].flatMap((ref) => (parseRef(ref)?.kind === "node" ? [parseRef(ref)?.id ?? ""] : [])))),
     [focus],
   );
+  // After a switch to another view, the first marked item scrolls into sight.
+  useEffect(() => {
+    document.querySelector(".change-main .change-item.selected, .change-main .change-item.linked")?.scrollIntoView({ block: "center" });
+  }, [view, diff]);
+
   const hunks = useMemo(() => new Map((diff?.files ?? []).flatMap((file) => file.hunks.map((hunk) => [hunk.id, { file, hunk }] as const))), [diff]);
 
   if (missing || change == null)
@@ -223,7 +231,7 @@ export const ChangePage = ({ changeId, view }: { changeId: string; view: ChangeV
         <aside className="inspector">
           {selectedItem != null ? (
             <section className="section">
-              <h2>{CHANGE_VIEWS.find((item) => item.view === selectedItem.view)?.name} item</h2>
+              <h2>{CHANGE_VIEWS.find((item) => item.view === selectedItem.view)?.item}</h2>
               <p className={selectedItem.broken ? "endpoints broken" : "endpoints"}>{selectedItem.text}</p>
               {selectedItem.broken && <p className="meta warning">This item is not in the {selectedItem.view === "concepts" ? "graph" : "diff"} any more.</p>}
               {neighbors(selectedItem.ref).map((level) => {

@@ -1613,7 +1613,6 @@ button.link.danger {
 .view-tabs a[aria-current="page"] {
   color: var(--ink);
   background: var(--chip);
-  font-weight: 600;
 }
 
 .change-main {
@@ -1715,6 +1714,11 @@ button.link.danger {
   font-size: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+textarea.item-code {
+  field-sizing: content;
+  resize: none;
 }
 
 .pseudo-lanes {

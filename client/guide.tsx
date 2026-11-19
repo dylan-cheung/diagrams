@@ -17,6 +17,7 @@ const SECTIONS = [
   ["runs", "Runs"],
   ["versions", "Versions"],
   ["proposals", "Proposals"],
+  ["changes", "Changes"],
 ] as const;
 
 const Section = ({ id, title, children }: { id: string; title: string; children: ReactNode }) => (
@@ -421,6 +422,31 @@ export const Guide = () => {
             </ol>
             <p>
               Caution: apply replaces edits in the draft that are not published. A warning shows when a changed node is also in other graphs.
+            </p>
+          </Section>
+
+          <Section id="changes" title="Changes">
+            <p>A change shows one code change in four views, from the general idea to the code. Open it from <b>Changes</b> in the top bar.</p>
+            <ol>
+              <li>
+                <b>Idea</b>: the goal and notes, and the points of the idea.
+              </li>
+              <li>
+                <b>Concepts</b>: a graph of the smaller concepts and how they relate.
+              </li>
+              <li>
+                <b>Pseudocode</b>: blocks of pseudocode, in the layers UI, API, Store and Data.
+              </li>
+              <li>
+                <b>Code</b>: the diff of the git branch of the change.
+              </li>
+            </ol>
+            <p>
+              A link connects an item to an item in the next view that carries it out: a point to a concept, a concept to a block, a block to a hunk of the
+              diff. Select an item and switch views: the items that trace to it stay marked, and the rest are dimmed.
+            </p>
+            <p>
+              To add links, select an item and click <b>Link items in …</b> in the panel. Then click items in that view to link or unlink them.
             </p>
           </Section>
         </article>

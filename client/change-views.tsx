@@ -209,7 +209,9 @@ export const PseudoView = ({ change, save, itemClass, onPick, linking, linkCount
 
 const lineClass = (line: string) => (line.startsWith("+") ? "line-added" : line.startsWith("-") ? "line-removed" : "");
 
-const countOf = (lines: string[], sign: string) => lines.filter((line) => line.startsWith(sign)).length;
+const shortRef = (ref: string) => (/^[0-9a-f]{40}$/.test(ref) ? ref.slice(0, 7) : ref);
+
+const countOf =(lines: string[], sign: string) => lines.filter((line) => line.startsWith(sign)).length;
 
 // A value that this browser keeps, for example a filter of the code view. Without browser storage, it is kept until
 // the page closes.
@@ -326,7 +328,7 @@ const DiffView = ({ change, diff, focus, onReload, itemClass, onPick, linkCount 
       <div className="change-doc diff-files">
         <div className="row">
           <span className="meta">
-            {diff.base}...{diff.branch} · {diff.files.length === 1 ? "1 file" : `${diff.files.length} files`}
+            {shortRef(diff.base)}...{shortRef(diff.branch)} · {diff.files.length === 1 ? "1 file" : `${diff.files.length} files`}
             {hidden > 0 && ` · ${hidden} hidden by a filter`}
           </span>
           <button type="button" className="link" onClick={onReload}>

@@ -3,6 +3,7 @@ import type { Flow, FlowStep, GraphContent, Run } from "../model.ts";
 import { edgeText, type FlowPath } from "./canvas.tsx";
 import { TextAreaField, TextField } from "./fields.tsx";
 import { localTime } from "./graph-list.tsx";
+import { Link } from "./router.tsx";
 import { PanelSection } from "./view-panel.tsx";
 import { useVocabulary } from "./vocabulary.ts";
 
@@ -29,14 +30,16 @@ const runName = (run: Run) => (run.label !== "" ? run.label : `Run of ${localTim
 
 // The flows of the graph. The panel shows them when nothing is selected.
 export const FlowsSection = ({
+  graphId,
   flows,
   content,
   onOpen,
   onCreate,
 }: {
+  graphId: string;
   flows: Flow[];
   content: GraphContent;
-  onOpen: (flowId: string) => void;
+  onOpen: () => void;
   onCreate?: (name: string) => void;
 }) => {
   const [adding, setAdding] = useState(false);
@@ -90,9 +93,9 @@ export const FlowsSection = ({
         <ul className="versions">
           {flows.map((flow) => (
             <li key={flow.id}>
-              <button type="button" className="link" onClick={() => onOpen(flow.id)}>
+              <Link className="link" to={{ page: "graph", graphId, flowId: flow.id }} onClick={onOpen}>
                 {flow.name}
-              </button>
+              </Link>
               <span className={flow.steps.some((step) => isBroken(content, step)) ? "meta warning" : "meta"}>
                 {flow.steps.length} steps
               </span>

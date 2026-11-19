@@ -108,7 +108,8 @@ button.icon {
   padding: 2px 8px;
 }
 
-button.link {
+button.link,
+a.link {
   border: 0;
   background: none;
   padding: 0;
@@ -119,7 +120,8 @@ button.link {
   justify-self: start;
 }
 
-button.link:hover {
+button.link:hover,
+a.link:hover {
   text-decoration-color: currentColor;
 }
 

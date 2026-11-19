@@ -1,12 +1,17 @@
 import { useMemo, useSyncExternalStore, type AnchorHTMLAttributes, type MouseEvent } from "react";
 
-export type Route = { page: "list" } | { page: "guide" } | { page: "graph"; graphId: string } | { page: "proposal"; graphId: string; proposalId: string };
+export type Route =
+  | { page: "list" }
+  | { page: "guide" }
+  | { page: "graph"; graphId: string; flowId?: string; runId?: string }
+  | { page: "proposal"; graphId: string; proposalId: string };
 
 export const parsePath = (pathname: string): Route => {
-  const [root, graphId, part, proposalId] = pathname.split("/").filter((segment) => segment !== "").map(decodeURIComponent);
+  const [root, graphId, part, id, subPart, subId] = pathname.split("/").filter((segment) => segment !== "").map(decodeURIComponent);
   if (root === "guide") return { page: "guide" };
   if (root !== "graphs" || graphId == null) return { page: "list" };
-  if (part === "proposals" && proposalId != null) return { page: "proposal", graphId, proposalId };
+  if (part === "proposals" && id != null) return { page: "proposal", graphId, proposalId: id };
+  if (part === "flows" && id != null) return subPart === "runs" && subId != null ? { page: "graph", graphId, flowId: id, runId: subId } : { page: "graph", graphId, flowId: id };
   // A graph has one page. Old links to /graphs/{id}/edit open it too.
   return { page: "graph", graphId };
 };
@@ -16,7 +21,9 @@ export const routePath = (route: Route) => {
   if (route.page === "guide") return "/guide";
   const base = `/graphs/${encodeURIComponent(route.graphId)}`;
   if (route.page === "proposal") return `${base}/proposals/${encodeURIComponent(route.proposalId)}`;
-  return base;
+  if (route.flowId == null) return base;
+  const flow = `${base}/flows/${encodeURIComponent(route.flowId)}`;
+  return route.runId == null ? flow : `${flow}/runs/${encodeURIComponent(route.runId)}`;
 };
 
 const listeners = new Set<() => void>();

@@ -53,9 +53,9 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
   const [picked, setPicked] = useState<Shown | null>(null);
   const [loadedVersions, setLoadedVersions] = useState<Record<number, GraphVersion>>({});
   const [selection, setSelection] = useState<Selection>(null);
-  const [flowId, setFlowId] = useState<string | null>(null);
+  const flowId = route.page === "graph" ? route.flowId : undefined;
+  const runId = route.page === "graph" ? route.runId : undefined;
   const [runs, setRuns] = useState<Run[]>([]);
-  const [runId, setRunId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   // The number of changes that are on their way to the server. Every change saves at once, so the draft is saved when
@@ -157,6 +157,11 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
   const flowRuns = runs.filter((item) => item.flowId === flow?.id);
   const openRun = flowRuns.find(({ id }) => id === runId);
   const reached = openRun?.events.length;
+  // A run shows on the version it uses, so the canvas shows the graph and the flow that the run follows.
+  const runVersion = runs.find(({ id }) => id === runId)?.version;
+  useEffect(() => {
+    if (runVersion != null) setPicked(runVersion);
+  }, [runVersion]);
   const path = useMemo(() => (flow == null ? undefined : pathOf(flow, reached)), [flow, reached]);
 
   const nodeName = (id: string) => draft?.nodes.find((node) => node.id === id)?.name ?? "node";
@@ -283,16 +288,12 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
 
   const openFlow = (id: string) => {
     setSelection(null);
-    setRunId(null);
-    setFlowId(id);
+    go({ page: "graph", graphId, flowId: id });
   };
 
-  // A run shows on the version it uses, so the canvas shows the graph and the flow that the run follows.
   const showRun = (item: Run) => {
     setSelection(null);
-    setPicked(item.version);
-    setFlowId(item.flowId);
-    setRunId(item.id);
+    go({ page: "graph", graphId, flowId: item.flowId, runId: item.id });
   };
 
   const runActions: RunActions = {
@@ -302,7 +303,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     finish: (status) => {
       if (openRun != null) void run(() => api.finishRun(graphId, openRun.id, { status }));
     },
-    close: () => setRunId(null),
+    close: () => go({ page: "graph", graphId, flowId }),
   };
 
   const createFlow = async (name: string) => {
@@ -320,12 +321,9 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     },
     truncate: (length) => saveSteps(flow?.steps.slice(0, length) ?? []),
     remove: () => {
-      if (flow != null) void run(() => api.deleteFlow(graphId, flow.id)).then(() => setFlowId(null));
+      if (flow != null) void run(() => api.deleteFlow(graphId, flow.id)).then(() => go({ page: "graph", graphId }, true));
     },
-    close: () => {
-      setFlowId(null);
-      setRunId(null);
-    },
+    close: () => go({ page: "graph", graphId }),
     startRun: () => {
       if (flow == null || published == null) return;
       void run(() => api.startRun(graphId, flow.id, published)).then((created) => {
@@ -359,8 +357,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     if (flow == null) {
       setSelection(next);
     } else if (readOnly) {
-      setFlowId(null);
-      setRunId(null);
+      go({ page: "graph", graphId });
       setSelection(next);
     } else if (next != null) {
       const steps = nextSteps(flow.steps, next);
@@ -586,7 +583,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
               <Inspector view={draft} selection={selection} actions={actions} />
               {selection == null && (
                 <>
-                  <FlowsSection flows={flows} content={draftContent} onOpen={openFlow} onCreate={(name) => void createFlow(name)} />
+                  <FlowsSection graphId={graphId} flows={flows} content={draftContent} onOpen={() => setSelection(null)} onCreate={(name) => void createFlow(name)} />
                   {sections}
                   <HistorySection history={history} undoKey={UNDO_KEY} redoKey={REDO_KEY} onGo={(index) => void goToHistory(index)} disabled={saving > 0} />
                   <GraphFooter view={draft} />
@@ -596,7 +593,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
           )}
           {flow == null && readOnly && viewContent != null && (
             <VersionPanel graphId={graphId} content={viewContent} selection={selection} onSelect={setSelection}>
-              <FlowsSection flows={flows} content={viewContent} onOpen={openFlow} />
+              <FlowsSection graphId={graphId} flows={flows} content={viewContent} onOpen={() => setSelection(null)} />
               {sections}
             </VersionPanel>
           )}

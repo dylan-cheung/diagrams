@@ -300,13 +300,31 @@ describe("flows", () => {
     const { one, a, b, c, ab, bc } = setup();
     const flow = store.createFlow(one.id, { name: "Main path", steps: [{ nodeId: a.id }, { nodeId: b.id }, { nodeId: c.id }, { nodeId: b.id }] });
     expect(flow.steps).toEqual([
-      { nodeId: a.id, edgeId: null },
-      { nodeId: b.id, edgeId: ab.id },
-      { nodeId: c.id, edgeId: bc.id },
-      { nodeId: b.id, edgeId: bc.id },
+      { nodeId: a.id, edgeId: null, intentId: null },
+      { nodeId: b.id, edgeId: ab.id, intentId: null },
+      { nodeId: c.id, edgeId: bc.id, intentId: null },
+      { nodeId: b.id, edgeId: bc.id, intentId: null },
     ]);
     expect(store.view(one.id).flows.map(({ name }) => name)).toEqual(["Main path"]);
     expect(store.listFlows(one.id)).toHaveLength(1);
+  });
+
+  test("each step maps to an intended step, and removing an intended step unmaps its steps", () => {
+    const { one, a, b, c } = setup();
+    const flow = store.createFlow(one.id, {
+      name: "Main path",
+      intents: [{ id: "start", text: "The caller starts." }, { text: "The call ends." }],
+      steps: [{ nodeId: a.id, intentId: "start" }, { nodeId: b.id, intentId: "start" }, { nodeId: c.id }],
+    });
+    const end = flow.intents[1]?.id ?? "";
+    expect(flow.intents.map(({ text }) => text)).toEqual(["The caller starts.", "The call ends."]);
+    expect(flow.steps.map(({ intentId }) => intentId)).toEqual(["start", "start", null]);
+    const mapped = store.updateFlow(one.id, flow.id, { steps: flow.steps.map((step, index) => (index === 2 ? { ...step, intentId: end } : step)) });
+    expect(mapped.steps.map(({ intentId }) => intentId)).toEqual(["start", "start", end]);
+    expect(() => store.updateFlow(one.id, flow.id, { steps: [{ nodeId: a.id, intentId: "nope" }] })).toThrow("Step 1: the intended step nope is not in the flow.");
+    const removed = store.updateFlow(one.id, flow.id, { intents: [{ id: end, text: "The call ends." }] });
+    expect(removed.steps.map(({ intentId }) => intentId)).toEqual([null, null, end]);
+    expect(() => store.updateFlow(one.id, flow.id, { intents: [{ id: "x", text: "One" }, { id: "x", text: "Two" }] })).toThrow("Two intended steps have the same id.");
   });
 
   test("rejects a step that does not follow an edge in its direction", () => {

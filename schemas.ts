@@ -128,8 +128,16 @@ export const FlowStep = z
   .object({
     nodeId: Id.openapi({ description: "The node that the flow is at in this step." }),
     edgeId: Id.nullable().openapi({ description: "The edge that the flow takes from the node of the step before to this node. It is null on the first step." }),
+    intentId: Id.nullable().openapi({ description: "The intended step of the flow that this step is part of. It is null until the step is mapped." }),
   })
   .openapi("FlowStep");
+
+export const FlowIntent = z
+  .object({
+    id: Id,
+    text: z.string().openapi({ example: "The customer submits a claim in the app." }),
+  })
+  .openapi("FlowIntent", { description: "One intended step of a flow: a human-readable step that should occur. One or more steps of the flow carry it out." });
 
 export const Flow = z
   .object({
@@ -137,6 +145,7 @@ export const Flow = z
     graphId: Id,
     name: z.string().openapi({ example: "Caller has a claim number" }),
     description: z.string().openapi({ example: "The caller gives the claim number at once, so the lookup step is skipped." }),
+    intents: z.array(FlowIntent).openapi({ description: "The intended steps in order. Each step of the flow maps to one of them." }),
     steps: z.array(FlowStep).openapi({ description: "The steps in order. A node can be in more than one step, for example in a loop." }),
     createdAt: Timestamp,
     updatedAt: Timestamp,
@@ -208,13 +217,22 @@ export const FlowStepInput = z
       description:
         "The id of the edge from the node of the step before to this node. Omit it when exactly one edge in the graph connects the two nodes in that direction. The first step has no edge.",
     }),
+    intentId: z.string().min(1).nullable().optional().openapi({ description: "The id of an intended step of the flow. Omit it to leave the step unmapped." }),
   })
   .openapi("FlowStepInput");
+
+export const FlowIntentInput = z
+  .object({
+    id: z.string().trim().min(1).optional().openapi({ description: "The id of the intended step. Omit it for a new one, and the server makes an id. Steps in the same request can use the id." }),
+    text: Name("An intended step needs text."),
+  })
+  .openapi("FlowIntentInput");
 
 export const FlowInput = z
   .object({
     name: Name("A flow needs a name."),
     description: z.string().optional().openapi({ example: "The caller gives the claim number at once, so the lookup step is skipped." }),
+    intents: z.array(FlowIntentInput).optional().openapi({ description: "The intended steps in order. On a change, it replaces all of them, and a step that maps to a removed one becomes unmapped." }),
     steps: z.array(FlowStepInput).optional().openapi({ description: "The steps in order. Each step after the first must follow an edge of the graph." }),
   })
   .openapi("FlowInput");
@@ -462,6 +480,7 @@ export type DraftState = z.infer<typeof DraftState>;
 export type GraphView = z.infer<typeof GraphView>;
 export type Flow = z.infer<typeof Flow>;
 export type FlowStep = z.infer<typeof FlowStep>;
+export type FlowIntent = z.infer<typeof FlowIntent>;
 export type FlowInput = z.infer<typeof FlowInput>;
 export type Run = z.infer<typeof Run>;
 export type RunEvent = z.infer<typeof RunEvent>;

@@ -356,7 +356,15 @@ export const Guide = () => {
               <li>
                 With nothing selected, click <b>+</b> next to <b>Flows</b> in the panel. Type a name and click <b>Add</b>.
               </li>
+              <li>
+                Under <b>Intended steps</b>, type each step that should occur, in plain words, and click <b>Add</b>. For example: "The customer submits a claim in
+                the app."
+              </li>
               <li>Click the node where the flow starts. Then click each next node, or the edge to follow when more than one edge connects two nodes.</li>
+              <li>
+                Each node of the flow maps to one intended step. A new node takes the intended step of the node before it. Pick another one in the list under
+                the node. A node without an intended step shows in red.
+              </li>
               <li>
                 The canvas shows the path with step numbers. Click <b>×</b> on a step to remove it and the steps after it. Click <b>Done</b> to close the flow.
               </li>

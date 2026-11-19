@@ -318,6 +318,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     update: (patch) => {
       if (flow != null) void run(() => api.updateFlow(graphId, flow.id, patch));
     },
+    mapStep: (index, intentId) => saveSteps(flow?.steps.map((step, at) => (at === index ? { ...step, intentId } : step)) ?? []),
     truncate: (length) => saveSteps(flow?.steps.slice(0, length) ?? []),
     remove: () => {
       if (flow != null) void run(() => api.deleteFlow(graphId, flow.id)).then(() => setFlowId(null));
@@ -335,23 +336,24 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     openRun: showRun,
   };
 
-  // The steps of the open flow with one more step for a click on a node or an edge, or why the click cannot add one.
-  const nextSteps = (steps: FlowStep[], clicked: NonNullable<Selection>): FlowStep[] | string => {
+  // The steps of the open flow with one more step for a click on a node or an edge, or why the click cannot add one. A new
+  // step maps to the intended step of the step before it, or to the first intended step.
+  const nextSteps = (steps: FlowStep[], intentId: string | null, clicked: NonNullable<Selection>): FlowStep[] | string => {
     const edges = draft?.edges ?? [];
     const last = steps.at(-1)?.nodeId;
     if (clicked.kind === "node") {
-      if (last == null) return [{ nodeId: clicked.id, edgeId: null }];
+      if (last == null) return [{ nodeId: clicked.id, edgeId: null, intentId }];
       const found = edges.filter((edge) => goesFrom(edge, last, clicked.id));
       if (found.length === 0) return `No edge goes from "${nodeName(last)}" to "${nodeName(clicked.id)}".`;
       if (found.length > 1) return `More than one edge goes from "${nodeName(last)}" to "${nodeName(clicked.id)}". Click the edge to follow.`;
-      return [...steps, { nodeId: clicked.id, edgeId: found[0]?.id ?? null }];
+      return [...steps, { nodeId: clicked.id, edgeId: found[0]?.id ?? null, intentId }];
     }
     const edge = edges.find(({ id }) => id === clicked.id);
     if (edge == null) return [];
-    if (last == null) return [{ nodeId: edge.source, edgeId: null }, { nodeId: edge.target, edgeId: edge.id }];
+    if (last == null) return [{ nodeId: edge.source, edgeId: null, intentId }, { nodeId: edge.target, edgeId: edge.id, intentId }];
     const to = goesFrom(edge, last, edge.target) ? edge.target : goesFrom(edge, last, edge.source) ? edge.source : null;
     if (to == null) return `The edge does not start at "${nodeName(last)}".`;
-    return [...steps, { nodeId: to, edgeId: edge.id }];
+    return [...steps, { nodeId: to, edgeId: edge.id, intentId }];
   };
 
   // While a flow is open in the draft, a click on the canvas adds a step instead of a selection.
@@ -363,7 +365,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
       setRunId(null);
       setSelection(next);
     } else if (next != null) {
-      const steps = nextSteps(flow.steps, next);
+      const steps = nextSteps(flow.steps, flow.steps.at(-1)?.intentId ?? flow.intents[0]?.id ?? null, next);
       if (typeof steps === "string") setErrors([steps]);
       else saveSteps(steps);
     }

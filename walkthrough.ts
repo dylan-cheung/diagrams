@@ -194,20 +194,33 @@ const EDGES: SeedEdge[] = [
   },
 ];
 
-type SeedFlow = { name: string; description: string; steps: string[] };
+type SeedFlow = { name: string; description: string; intents: { text: string; steps: string[] }[] };
 
-// Each step is a node key. Between two steps, exactly one edge goes from the first node to the second, so the store finds it.
+// Each intended step lists its steps in order, and the flow is all of them in sequence. Each step is a node key. Between
+// two steps, exactly one edge goes from the first node to the second, so the store finds it.
 const FLOWS: SeedFlow[] = [
   {
     name: "Small claim is paid at once",
     description: "The main path. A customer submits a claim under $5,000, the Claims API routes it straight to payment, and the card processor confirms the payout.",
-    steps: ["app", "api", "small", "pay", "card", "pay", "queue"],
+    intents: [
+      { text: "The customer submits a claim in the app.", steps: ["app", "api"] },
+      { text: "The claim is under $5,000, so it goes straight to payment.", steps: ["small"] },
+      { text: "The customer gets the payout on their card.", steps: ["pay", "card", "pay"] },
+      { text: "The other systems learn that the claim is paid.", steps: ["queue"] },
+    ],
   },
   {
     name: "Large claim needs an adjuster",
     description:
       "An edge case. A claim of $5,000 or more goes to the adjuster dashboard. After the adjuster approves it, the claim goes back through routing and is paid.",
-    steps: ["app", "api", "small", "dash", "api", "small", "pay", "card", "pay", "queue"],
+    intents: [
+      { text: "The customer submits a claim in the app.", steps: ["app", "api"] },
+      { text: "The claim is $5,000 or more, so it goes to an adjuster.", steps: ["small"] },
+      { text: "The adjuster reviews and approves the claim.", steps: ["dash"] },
+      { text: "The approved claim goes back through routing to payment.", steps: ["api", "small"] },
+      { text: "The customer gets the payout on their card.", steps: ["pay", "card", "pay"] },
+      { text: "The other systems learn that the claim is paid.", steps: ["queue"] },
+    ],
   },
 ];
 
@@ -286,7 +299,14 @@ export const ensureWalkthrough = (store: GraphStore) => {
     routes: Object.fromEntries(edgeIds.flatMap((edgeId, i) => (layout.routes[i] == null ? [] : [[edgeId, layout.routes[i]]]))),
   });
   const flowIds = new Map(
-    FLOWS.map(({ steps, ...flow }) => [flow.name, store.createFlow(WALKTHROUGH_ID, { ...flow, steps: steps.map((key) => ({ nodeId: id(key) })) }).id]),
+    FLOWS.map(({ intents, ...flow }) => [
+      flow.name,
+      store.createFlow(WALKTHROUGH_ID, {
+        ...flow,
+        intents: intents.map(({ text }, index) => ({ id: `intent-${index + 1}`, text })),
+        steps: intents.flatMap(({ steps }, index) => steps.map((key) => ({ nodeId: id(key), intentId: `intent-${index + 1}` }))),
+      }).id,
+    ]),
   );
   store.publish(WALKTHROUGH_ID);
   for (const { flow, label, properties, notes, finish } of RUNS) {

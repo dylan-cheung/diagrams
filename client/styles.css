@@ -1009,6 +1009,26 @@ button.add {
   color: var(--danger);
 }
 
+.flow-step {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.flow-step select {
+  max-width: 100%;
+}
+
+.flow-step select.warning {
+  color: var(--danger);
+}
+
+.flow-steps .intent-text {
+  flex: 1;
+  min-width: 0;
+}
+
 .flow-new {
   display: flex;
   gap: 6px;

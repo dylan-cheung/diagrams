@@ -15,6 +15,7 @@ import {
   type FinishInput,
   type Flow,
   type FlowInput,
+  type FlowIntent,
   type FlowStep,
   type Graph,
   type GraphContent,
@@ -72,7 +73,7 @@ type GraphRow = { id: string; name: string; description: string; direction: Layo
 
 type VersionRow = { graph_id: string; version: number; hash: string; published_at: string };
 
-type FlowRow = { id: string; graph_id: string; name: string; description: string; steps: string; created_at: string; updated_at: string };
+type FlowRow = { id: string; graph_id: string; name: string; description: string; intents: string; steps: string; created_at: string; updated_at: string };
 
 type RunRow = {
   id: string;
@@ -169,15 +170,24 @@ const toProposalSummary = (row: ProposalRow): ProposalSummary => ({
   updatedAt: row.updated_at,
 });
 
-const toFlow = (row: FlowRow): Flow => ({
-  id: row.id,
-  graphId: row.graph_id,
-  name: row.name,
-  description: row.description,
-  steps: JSON.parse(row.steps) as FlowStep[],
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
+// Flows saved before intended steps have no intents, and their steps have no intentId.
+const withIntents = (flow: Flow): Flow => ({
+  ...flow,
+  intents: flow.intents ?? [],
+  steps: flow.steps.map((step) => ({ ...step, intentId: step.intentId ?? null })),
 });
+
+const toFlow = (row: FlowRow): Flow =>
+  withIntents({
+    id: row.id,
+    graphId: row.graph_id,
+    name: row.name,
+    description: row.description,
+    intents: JSON.parse(row.intents) as FlowIntent[],
+    steps: JSON.parse(row.steps) as FlowStep[],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
 
 const toRun = (row: RunRow): Run => ({
   id: row.id,
@@ -223,7 +233,15 @@ export const contentHash = ({ graph, nodes, edges, flows }: GraphView) =>
         description: graph.description,
         nodes: byId(nodes).map((n) => [n.id, n.name, n.description, n.labels, sortKeys(n.properties), ...designOf(NODE_DESIGN_DEFAULTS, n)]),
         edges: byId(edges).map((e) => [e.id, e.source, e.target, e.directed, e.label, sortKeys(e.properties), ...designOf(EDGE_DESIGN_DEFAULTS, e)]),
-        ...(flows.length > 0 && { flows: byId(flows).map((f) => [f.id, f.name, f.description, f.steps.map((step) => [step.nodeId, step.edgeId])]) }),
+        ...(flows.length > 0 && {
+          flows: byId(flows).map((f) => [
+            f.id,
+            f.name,
+            f.description,
+            f.steps.map((step) => [step.nodeId, step.edgeId, ...(step.intentId == null ? [] : [step.intentId])]),
+            ...(f.intents.length > 0 ? [f.intents.map((intent) => [intent.id, intent.text])] : []),
+          ]),
+        }),
       }),
     )
     .digest("hex");
@@ -303,6 +321,7 @@ CREATE TABLE IF NOT EXISTS flows (
   graph_id TEXT NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
+  intents TEXT NOT NULL DEFAULT '[]',
   steps TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -328,6 +347,7 @@ CREATE INDEX IF NOT EXISTS runs_graph ON runs(graph_id, flow_id);
 const ADDED_COLUMNS: [string, string, string][] = [
   ["nodes", "description", "TEXT NOT NULL DEFAULT ''"],
   ["graphs", "description", "TEXT NOT NULL DEFAULT ''"],
+  ["flows", "intents", "TEXT NOT NULL DEFAULT '[]'"],
   ["graphs", "direction", "TEXT NOT NULL DEFAULT 'horizontal'"],
   ["nodes", "type", "TEXT"],
   ["nodes", "intent", "TEXT NOT NULL DEFAULT ''"],
@@ -596,7 +616,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
         ...snapshot,
         nodes: snapshot.nodes.map((node) => ({ ...NODE_DESIGN_DEFAULTS, ...node })),
         edges: snapshot.edges.map((edge) => ({ ...EDGE_DESIGN_DEFAULTS, ...edge, route: edge.route ?? null })),
-        flows: snapshot.flows ?? [],
+        flows: (snapshot.flows ?? []).map(withIntents),
       },
     };
   };
@@ -817,46 +837,62 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
 
   // Each step after the first must follow an edge of the graph from the node of the step before. A step without an edge
   // takes the one edge that connects the two nodes in that direction.
-  const checkSteps = (graphId: string, steps: NonNullable<FlowInput["steps"]>): FlowStep[] => {
+  // A step can map to an intended step of the flow.
+  const checkSteps = (graphId: string, steps: NonNullable<FlowInput["steps"]>, intents: FlowIntent[]): FlowStep[] => {
     const { nodes, edges } = view(graphId);
     const names = new Map(nodes.map(({ id, name }) => [id, name]));
     const goesFrom = (edge: GraphEdge, from: string, to: string) =>
       (edge.source === from && edge.target === to) || (!edge.directed && edge.source === to && edge.target === from);
-    return steps.map(({ nodeId, edgeId }, index): FlowStep => {
+    const edgeOf = ({ nodeId, edgeId }: (typeof steps)[number], index: number): string | null => {
       const name = names.get(nodeId);
       if (name == null) throw new StoreError(`Step ${index + 1}: the node ${nodeId} is not in the graph.`, 400);
       const previous = steps[index - 1]?.nodeId;
       if (previous == null) {
         if (edgeId != null) throw new StoreError("Step 1: the first step has no edge.", 400);
-        return { nodeId, edgeId: null };
+        return null;
       }
       const route = `${names.get(previous)} to ${name}`;
       if (edgeId != null) {
         const edge = edges.find(({ id }) => id === edgeId);
         if (edge == null) throw new StoreError(`Step ${index + 1}: the edge ${edgeId} is not in the graph.`, 400);
         if (!goesFrom(edge, previous, nodeId)) throw new StoreError(`Step ${index + 1}: the edge ${edgeId} does not go from ${route}.`, 400);
-        return { nodeId, edgeId };
+        return edgeId;
       }
       const found = edges.filter((edge) => goesFrom(edge, previous, nodeId));
       if (found.length === 0) throw new StoreError(`Step ${index + 1}: no edge goes from ${route}.`, 400);
       if (found.length > 1) throw new StoreError(`Step ${index + 1}: more than one edge goes from ${route}. Give the edgeId.`, 400);
-      return { nodeId, edgeId: found[0]?.id ?? null };
+      return found[0]?.id ?? null;
+    };
+    return steps.map((step, index): FlowStep => {
+      const edgeId = edgeOf(step, index);
+      const intentId = step.intentId ?? null;
+      if (intentId != null && !intents.some(({ id }) => id === intentId))
+        throw new StoreError(`Step ${index + 1}: the intended step ${intentId} is not in the flow.`, 400);
+      return { nodeId: step.nodeId, edgeId, intentId };
     });
+  };
+
+  const checkIntents = (input: NonNullable<FlowInput["intents"]>): FlowIntent[] => {
+    const intents = input.map(({ id, text }) => ({ id: id ?? crypto.randomUUID(), text: text.trim() }));
+    if (new Set(intents.map(({ id }) => id)).size < intents.length) throw new StoreError("Two intended steps have the same id.", 400);
+    return intents;
   };
 
   const createFlow = (graphId: string, input: FlowInput) => {
     requireGraph(graphId);
     const id = crypto.randomUUID();
     const stamp = now();
+    const intents = checkIntents(input.intents ?? []);
     db.query(
-      `INSERT INTO flows (id, graph_id, name, description, steps, created_at, updated_at)
-       VALUES ($id, $graphId, $name, $description, $steps, $stamp, $stamp)`,
+      `INSERT INTO flows (id, graph_id, name, description, intents, steps, created_at, updated_at)
+       VALUES ($id, $graphId, $name, $description, $intents, $steps, $stamp, $stamp)`,
     ).run({
       id,
       graphId,
       name: input.name.trim(),
       description: input.description?.trim() ?? "",
-      steps: JSON.stringify(checkSteps(graphId, input.steps ?? [])),
+      intents: JSON.stringify(intents),
+      steps: JSON.stringify(checkSteps(graphId, input.steps ?? [], intents)),
       stamp,
     });
     touchGraph(graphId);
@@ -865,11 +901,18 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
 
   const updateFlow = (graphId: string, flowId: string, input: Partial<FlowInput>) => {
     const flow = requireFlow(graphId, flowId);
-    db.query("UPDATE flows SET name = $name, description = $description, steps = $steps, updated_at = $now WHERE id = $id").run({
+    const intents = input.intents != null ? checkIntents(input.intents) : flow.intents;
+    const kept = new Set(intents.map(({ id }) => id));
+    const steps =
+      input.steps != null
+        ? checkSteps(graphId, input.steps, intents)
+        : flow.steps.map((step) => (step.intentId != null && !kept.has(step.intentId) ? { ...step, intentId: null } : step));
+    db.query("UPDATE flows SET name = $name, description = $description, intents = $intents, steps = $steps, updated_at = $now WHERE id = $id").run({
       id: flowId,
       name: input.name?.trim() ?? flow.name,
       description: input.description?.trim() ?? flow.description,
-      steps: JSON.stringify(input.steps != null ? checkSteps(graphId, input.steps) : flow.steps),
+      intents: JSON.stringify(intents),
+      steps: JSON.stringify(steps),
       now: now(),
     });
     touchGraph(graphId);

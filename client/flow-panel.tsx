@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import type { Flow, FlowStep, GraphContent, Run } from "../model.ts";
+import { useEffect, useState, type FormEvent } from "react";
+import type { Flow, FlowInput, FlowStep, GraphContent, Run } from "../model.ts";
 import { edgeText, type FlowPath } from "./canvas.tsx";
 import { TextAreaField, TextField } from "./fields.tsx";
 import { localTime } from "./graph-list.tsx";
@@ -93,7 +93,11 @@ export const FlowsSection = ({
               <button type="button" className="link" onClick={() => onOpen(flow.id)}>
                 {flow.name}
               </button>
-              <span className={flow.steps.some((step) => isBroken(content, step)) ? "meta warning" : "meta"}>
+              <span
+                className={
+                  flow.steps.some((step) => isBroken(content, step) || !flow.intents.some(({ id }) => id === step.intentId)) ? "meta warning" : "meta"
+                }
+              >
                 {flow.steps.length} steps
               </span>
             </li>
@@ -104,8 +108,93 @@ export const FlowsSection = ({
   );
 };
 
+const NO_FILL = { autoComplete: "off", "data-1p-ignore": true, "data-lpignore": "true", "data-bwignore": true, "data-form-type": "other" } as const;
+
+// The text of one intended step. It saves when the field loses focus, and an empty text keeps the old one.
+const IntentText = ({ value, label, onCommit }: { value: string; label: string; onCommit: (text: string) => void }) => {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  return (
+    <input
+      className="intent-text"
+      value={text}
+      aria-label={label}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => {
+        if (text.trim() === "") setText(value);
+        else if (text.trim() !== value) onCommit(text.trim());
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") setText(value);
+      }}
+      {...NO_FILL}
+    />
+  );
+};
+
+// The intended steps of a flow: the steps that should occur, in plain words. Each step of the flow maps to one of them.
+const IntendedSteps = ({ flow, readOnly, onChange }: { flow: Flow; readOnly: boolean; onChange: (intents: NonNullable<FlowInput["intents"]>) => void }) => {
+  const [text, setText] = useState("");
+  const add = (event: FormEvent) => {
+    event.preventDefault();
+    if (text.trim() === "") return;
+    onChange([...flow.intents, { text: text.trim() }]);
+    setText("");
+  };
+  return (
+    <>
+      <h2>Intended steps</h2>
+      <p className="hint">The steps that should occur, in plain words. Each node of the flow maps to one of them.</p>
+      {flow.intents.length === 0 ? (
+        <p className="meta">No intended steps.</p>
+      ) : (
+        <ol className="flow-steps">
+          {flow.intents.map((intent, index) => {
+            const count = flow.steps.filter(({ intentId }) => intentId === intent.id).length;
+            return (
+              <li key={intent.id}>
+                {readOnly ? (
+                  <span>{intent.text}</span>
+                ) : (
+                  <IntentText
+                    value={intent.text}
+                    label={`Intended step ${index + 1}`}
+                    onCommit={(next) => onChange(flow.intents.map((item) => (item.id === intent.id ? { ...item, text: next } : item)))}
+                  />
+                )}
+                <span className={count === 0 ? "meta warning" : "meta"}>{count === 1 ? "1 node" : `${count} nodes`}</span>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => onChange(flow.intents.filter(({ id }) => id !== intent.id))}
+                    aria-label={`Remove intended step ${index + 1}`}
+                    title="Remove this intended step. Its nodes become unmapped."
+                  >
+                    ×
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {!readOnly && (
+        <form className="flow-new" autoComplete="off" onSubmit={add}>
+          <input value={text} placeholder="What should occur next" aria-label="New intended step" onChange={(e) => setText(e.target.value)} {...NO_FILL} />
+          <button type="submit" disabled={text.trim() === ""}>
+            Add
+          </button>
+        </form>
+      )}
+    </>
+  );
+};
+
 export type FlowActions = {
-  update: (patch: { name?: string; description?: string }) => void;
+  update: (patch: { name?: string; description?: string; intents?: FlowInput["intents"] }) => void;
+  mapStep: (index: number, intentId: string | null) => void;
   truncate: (length: number) => void;
   remove: () => void;
   close: () => void;
@@ -132,6 +221,7 @@ export const FlowPanel = ({
   const vocabulary = useVocabulary();
   const nodeName = (id: string) => content.nodes.find((node) => node.id === id)?.name;
   const edgeOf = (id: string | null) => (id == null ? undefined : content.edges.find((edge) => edge.id === id));
+  const unmapped = flow.steps.filter(({ intentId }) => !flow.intents.some(({ id }) => id === intentId)).length;
   return (
     <section className="section">
       <h2>Flow</h2>
@@ -156,17 +246,45 @@ export const FlowPanel = ({
           </p>
         </>
       )}
+      <IntendedSteps flow={flow} readOnly={readOnly} onChange={(intents) => actions.update({ intents })} />
+      <h2>Nodes</h2>
+      {unmapped > 0 && (
+        <p className="meta warning">
+          {unmapped === 1 ? "1 node has" : `${unmapped} nodes have`} no intended step.
+          {!readOnly && (flow.intents.length === 0 ? " Add an intended step above." : " Pick one for each node.")}
+        </p>
+      )}
       {flow.steps.length > 0 && (
         <ol className="flow-steps">
           {flow.steps.map((step, index) => {
             const edge = edgeOf(step.edgeId);
             const via = edge == null ? "" : edgeText(edge, vocabulary);
+            const intent = flow.intents.find(({ id }) => id === step.intentId);
             return (
               <li key={index}>
-                <span className={isBroken(content, step) ? "broken" : ""}>
-                  {nodeName(step.nodeId) ?? "Node not in the graph"}
-                  {step.edgeId != null && edge == null ? " (edge not in the graph)" : via !== "" && <span className="meta"> via {via}</span>}
-                </span>
+                <div className="flow-step">
+                  <span className={isBroken(content, step) ? "broken" : ""}>
+                    {nodeName(step.nodeId) ?? "Node not in the graph"}
+                    {step.edgeId != null && edge == null ? " (edge not in the graph)" : via !== "" && <span className="meta"> via {via}</span>}
+                  </span>
+                  {readOnly || flow.intents.length === 0 ? (
+                    <span className={intent == null ? "meta warning" : "meta"}>{intent?.text ?? "No intended step"}</span>
+                  ) : (
+                    <select
+                      className={intent == null ? "warning" : undefined}
+                      value={intent?.id ?? ""}
+                      aria-label={`Intended step of step ${index + 1}`}
+                      onChange={(e) => actions.mapStep(index, e.target.value === "" ? null : e.target.value)}
+                    >
+                      <option value="">No intended step</option>
+                      {flow.intents.map((item, number) => (
+                        <option key={item.id} value={item.id}>
+                          {number + 1}. {item.text}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
                 {!readOnly && (
                   <button
                     type="button"

@@ -11,6 +11,7 @@ export type {
   Flow,
   FlowInput,
   FlowStep,
+  FlowIntent,
   Graph,
   GraphEdge,
   GraphContent,

@@ -9,6 +9,9 @@ import {
   ChangeDiff,
   ChangeInput,
   ChangePatch,
+  Feedback,
+  FeedbackInput,
+  FeedbackPatch,
   DraftState,
   Edge,
   EdgeInput,
@@ -63,6 +66,7 @@ const DiffQuery = z.object({
 const FlowParams = z.object({ id: pathParam("id"), flowId: pathParam("flowId") });
 const RunParams = z.object({ id: pathParam("id"), runId: pathParam("runId") });
 const RunsQuery = z.object({ flowId: z.string().optional().openapi({ param: { name: "flowId", in: "query" }, description: "Only the runs of this flow." }) });
+const FeedbackParams = z.object({ id: pathParam("id"), noteId: pathParam("noteId") });
 const GraphEdgeParams = z.object({ id: pathParam("id"), edgeId: pathParam("edgeId") });
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({
@@ -74,7 +78,7 @@ const body = <T extends z.ZodType>(schema: T) => ({ body: { content: { "applicat
 
 const errors = {
   400: json(ErrorBody, "The request is not valid."),
-  404: json(ErrorBody, "A graph, node, edge, flow, run, proposal or change in the path does not exist."),
+  404: json(ErrorBody, "A graph, node, edge, flow, run, proposal, change or note in the path does not exist."),
   409: json(ErrorBody, "The graph name is already used, the proposal is not open, or the run cannot change."),
 };
 
@@ -693,6 +697,52 @@ export const createApi = (store: GraphStore) => {
         responses: { 200: json(ChangeDiff, "The files and hunks of the diff.") },
       }),
       (c) => c.json(store.diffChange(c.req.valid("param").id), 200),
+    )
+    .openapi(
+      route({
+        method: "get",
+        path: "/api/changes/{id}/feedback",
+        tags: tag.changes,
+        summary: "List the feedback on a change",
+        description: "Notes of feedback that a reviewer collects while looking at a change. Each note is about the whole change or about one item (ref).",
+        request: { params: IdParams },
+        responses: { 200: json(z.array(Feedback), "Every note, oldest first.") },
+      }),
+      (c) => c.json(store.listFeedback(c.req.valid("param").id), 200),
+    )
+    .openapi(
+      route({
+        method: "post",
+        path: "/api/changes/{id}/feedback",
+        tags: tag.changes,
+        summary: "Add a note of feedback",
+        request: { params: IdParams, ...body(FeedbackInput) },
+        responses: { 200: json(Feedback, "The new note.") },
+      }),
+      (c) => c.json(store.addFeedback(c.req.valid("param").id, c.req.valid("json")), 200),
+    )
+    .openapi(
+      route({
+        method: "patch",
+        path: "/api/changes/{id}/feedback/{noteId}",
+        tags: tag.changes,
+        summary: "Change a note of feedback",
+        description: "Omitted fields keep their value. Set done to mark the feedback as handled. Set ref to null to make the note about the whole change.",
+        request: { params: FeedbackParams, ...body(FeedbackPatch) },
+        responses: { 200: json(Feedback, "The changed note.") },
+      }),
+      (c) => {
+        const { id, noteId } = c.req.valid("param");
+        return c.json(store.updateFeedback(id, noteId, c.req.valid("json")), 200);
+      },
+    )
+    .openapi(
+      route({ method: "delete", path: "/api/changes/{id}/feedback/{noteId}", tags: tag.changes, summary: "Delete a note of feedback", request: { params: FeedbackParams }, responses: noContent }),
+      (c) => {
+        const { id, noteId } = c.req.valid("param");
+        store.deleteFeedback(id, noteId);
+        return c.body(null, 204);
+      },
     );
 
   app.doc31("/openapi.json", {

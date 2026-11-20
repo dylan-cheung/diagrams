@@ -1,6 +1,6 @@
 import { hc, type ClientResponse } from "hono/client";
 import type { AppType } from "../api.ts";
-import type { ChangeInput, DraftState, EdgeInput, FinishInput, FlowInput, GraphInput, GraphPatch, LayoutInput, NodeInput, Position } from "../model.ts";
+import type { ChangeInput, FeedbackInput, DraftState, EdgeInput, FinishInput, FlowInput, GraphInput, GraphPatch, LayoutInput, NodeInput, Position } from "../model.ts";
 
 export class ApiError extends Error {
   constructor(readonly errors: string[]) {
@@ -80,4 +80,9 @@ export const api = {
   updateChange: (id: string, input: Partial<ChangeInput>) => unwrap(changes[":id"].$patch({ param: { id }, json: input })),
   deleteChange: (id: string) => unwrap(changes[":id"].$delete({ param: { id } })),
   diffChange: (id: string) => unwrap(changes[":id"].diff.$get({ param: { id } })),
+  listFeedback: (id: string) => unwrap(changes[":id"].feedback.$get({ param: { id } })),
+  addFeedback: (id: string, input: FeedbackInput) => unwrap(changes[":id"].feedback.$post({ param: { id }, json: input })),
+  updateFeedback: (id: string, noteId: string, input: Partial<FeedbackInput>) =>
+    unwrap(changes[":id"].feedback[":noteId"].$patch({ param: { id, noteId }, json: input })),
+  deleteFeedback: (id: string, noteId: string) => unwrap(changes[":id"].feedback[":noteId"].$delete({ param: { id, noteId } })),
 };

@@ -15,6 +15,7 @@ export type ItemProps = {
   onPick: (ref: string) => void;
   linking: boolean;
   linkCount: (ref: string) => number;
+  noteCount: (ref: string) => number;
 };
 
 type Save = (patch: Partial<ChangeInput>) => void;
@@ -27,8 +28,10 @@ const Remove = ({ label, onClick }: { label: string; onClick: () => void }) => (
 
 const Links = ({ count }: { count: number }) => (count === 0 ? null : <span className="meta">{count === 1 ? "1 link" : `${count} links`}</span>);
 
+const Notes = ({ count }: { count: number }) => (count === 0 ? null : <span className="pill note-count">{count === 1 ? "1 note" : `${count} notes`}</span>);
+
 // The idea view: the goal and notes in prose, then the bullet points. Each bullet point can have links.
-export const IdeaView = ({ change, save, itemClass, onPick, linking, linkCount }: { change: Change; save: Save } & ItemProps) => {
+export const IdeaView = ({ change, save, itemClass, onPick, linking, linkCount, noteCount }: { change: Change; save: Save } & ItemProps) => {
   const [text, setText] = useState("");
   const add = (event: FormEvent) => {
     event.preventDefault();
@@ -61,6 +64,7 @@ export const IdeaView = ({ change, save, itemClass, onPick, linking, linkCount }
                   onCommit={(next) => save({ ideas: change.ideas.map((item) => (item.id === idea.id ? { ...item, text: next } : item)) })}
                 />
               )}
+              <Notes count={noteCount(ref)} />
               <Links count={linkCount(ref)} />
               {!linking && <Remove label={`Remove point ${index + 1} and its links`} onClick={() => save({ ideas: change.ideas.filter(({ id }) => id !== idea.id) })} />}
             </li>
@@ -147,7 +151,7 @@ export const ConceptView = ({
 };
 
 // The pseudocode view: one lane for each layer, with its blocks in order.
-export const PseudoView = ({ change, save, itemClass, onPick, linking, linkCount }: { change: Change; save: Save } & ItemProps) => {
+export const PseudoView = ({ change, save, itemClass, onPick, linking, linkCount, noteCount }: { change: Change; save: Save } & ItemProps) => {
   const setBlock = (id: string, patch: { layer?: PseudoLayer; text?: string }) =>
     save({ blocks: change.blocks.map((block) => (block.id === id ? { ...block, ...patch } : block)) });
   return (
@@ -165,6 +169,7 @@ export const PseudoView = ({ change, save, itemClass, onPick, linking, linkCount
                     <button type="button" className="item-handle" onClick={linking ? undefined : () => onPick(ref)} aria-label="Select this block">
                       ⋮
                     </button>
+                    <Notes count={noteCount(ref)} />
                     <Links count={linkCount(ref)} />
                     <span className="spacer" />
                     {!linking && (
@@ -255,7 +260,7 @@ export const CodeView = ({ diff, error, onReload, ...props }: CodeProps & { diff
 
 // The file list on the left, and the files and their hunks. "Only linked" shows the hunks that trace to the selected
 // item, or the hunks with a link when nothing is selected. Files can be folded, and test files can be hidden.
-const DiffView = ({ change, diff, focus, onReload, itemClass, onPick, linkCount }: CodeProps & { diff: ChangeDiff; onReload: () => void }) => {
+const DiffView = ({ change, diff, focus, onReload, itemClass, onPick, linkCount, noteCount }: CodeProps & { diff: ChangeDiff; onReload: () => void }) => {
   const [onlyLinked, setOnlyLinked] = useStored("diagram.code.onlyLinked", false);
   const [hideTests, setHideTests] = useStored("diagram.code.hideTests", false);
   const [folded, setFolded] = useStored<string[]>(`diagram.code.folded.${change.id}`, []);
@@ -360,6 +365,7 @@ const DiffView = ({ change, diff, focus, onReload, itemClass, onPick, linkCount 
                       <div className="item-head">
                         <span className="mono">{hunk.header}</span>
                         <span className="spacer" />
+                        <Notes count={noteCount(ref)} />
                         <Links count={linkCount(ref)} />
                       </div>
                       <pre className="item-code">

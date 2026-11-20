@@ -16,6 +16,9 @@ export type ItemKind = "idea" | "node" | "pseudo" | "hunk";
 
 export type Link = { from: string; to: string };
 
+// An item as the editor shows it: its view, its text, and whether it is gone from the graph, the diff or the change.
+export type ChangeItem = { ref: string; view: ChangeView; text: string; broken: boolean };
+
 // A file of tests: in a tests or __tests__ folder, or named *.test.* or *.spec.*.
 export const isTestFile = (path: string) => /(^|\/)(__tests__|tests?)\//.test(path) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(path);
 

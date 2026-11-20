@@ -696,6 +696,27 @@ describe("changes", () => {
     expect(() => store.getChange(change.id)).toThrow("The change does not exist.");
   });
 
+  test("feedback notes belong to a change, can be about an item, and go when the change goes", () => {
+    const change = store.createChange({ name: "Reviewed" });
+    const general = store.addFeedback(change.id, { text: " Split this into two PRs. " });
+    const onHunk = store.addFeedback(change.id, { text: "Name the error.", ref: "hunk:abc" });
+    expect([general.text, general.ref, general.done]).toEqual(["Split this into two PRs.", null, false]);
+    expect(onHunk.ref).toBe("hunk:abc");
+    expect(() => store.addFeedback(change.id, { text: "Bad", ref: "file:x" })).toThrow("The item file:x is not kind:id");
+
+    const done = store.updateFeedback(change.id, onHunk.id, { done: true });
+    expect([done.text, done.ref, done.done]).toEqual(["Name the error.", "hunk:abc", true]);
+    expect(store.updateFeedback(change.id, onHunk.id, { ref: null }).ref).toBeNull();
+    expect(store.listFeedback(change.id).map(({ text }) => text)).toEqual(["Split this into two PRs.", "Name the error."]);
+
+    store.deleteFeedback(change.id, general.id);
+    expect(() => store.updateFeedback(change.id, general.id, { done: true })).toThrow("The note does not exist.");
+    store.deleteChange(change.id);
+    expect(() => store.listFeedback(change.id)).toThrow("The change does not exist.");
+    const other = store.createChange({ name: "Other" });
+    expect(store.listFeedback(other.id)).toEqual([]);
+  });
+
   test("the diff of a change needs a repository and branches", () => {
     const change = store.createChange({ name: "No branch" });
     expect(() => store.diffChange(change.id)).toThrow("The change has no repository.");

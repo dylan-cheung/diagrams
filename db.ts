@@ -10,6 +10,8 @@ import {
   type Change,
   type ChangeInput,
   type ChangeLink,
+  type Feedback,
+  type FeedbackInput,
   type IdeaItem,
   type PseudoBlock,
   NODE_DESIGN_DEFAULTS,
@@ -201,6 +203,18 @@ type ChangeRow = {
   updated_at: string;
 };
 
+type FeedbackRow = { id: string; change_id: string; text: string; ref: string | null; done: number; created_at: string; updated_at: string };
+
+const toFeedback = (row: FeedbackRow): Feedback => ({
+  id: row.id,
+  changeId: row.change_id,
+  text: row.text,
+  ref: row.ref,
+  done: row.done === 1,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
 const toChange = (row: ChangeRow): Change => ({
   id: row.id,
   name: row.name,
@@ -374,6 +388,16 @@ CREATE TABLE IF NOT EXISTS changes (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS change_feedback (
+  id TEXT PRIMARY KEY,
+  change_id TEXT NOT NULL REFERENCES changes(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  ref TEXT,
+  done INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS change_feedback_change ON change_feedback(change_id);
 `;
 
 const ADDED_COLUMNS: [string, string, string][] = [
@@ -994,6 +1018,25 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
   };
 
   const changeById = db.query<ChangeRow, { id: string }>("SELECT * FROM changes WHERE id = $id");
+  const feedbackById = db.query<FeedbackRow, { id: string; changeId: string }>("SELECT * FROM change_feedback WHERE id = $id AND change_id = $changeId");
+
+  const requireFeedback = (changeId: string, id: string) => {
+    const row = feedbackById.get({ id, changeId });
+    if (row == null) throw new StoreError("The note does not exist.", 404);
+    return toFeedback(row);
+  };
+
+  // A note is about the whole change, or about one item of it. The item can be gone later, as a link can.
+  const checkRef = (ref: string | null | undefined) => {
+    if (ref != null && parseRef(ref) == null) throw new StoreError(`The item ${ref} is not kind:id with a kind of idea, node, pseudo or hunk.`, 400);
+    return ref ?? null;
+  };
+
+  const saveFeedback = db.query(
+    `INSERT INTO change_feedback (id, change_id, text, ref, done, created_at, updated_at)
+     VALUES ($id, $changeId, $text, $ref, $done, $createdAt, $stamp)
+     ON CONFLICT(id) DO UPDATE SET text = $text, ref = $ref, done = $done, updated_at = $stamp`,
+  );
 
   const requireChange = (id: string) => {
     const row = changeById.get({ id });
@@ -1247,6 +1290,37 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     deleteChange: (id: string) => {
       requireChange(id);
       db.query("DELETE FROM changes WHERE id = $id").run({ id });
+    },
+    listFeedback: (changeId: string) => {
+      requireChange(changeId);
+      return db
+        .query<FeedbackRow, { changeId: string }>("SELECT * FROM change_feedback WHERE change_id = $changeId ORDER BY created_at, rowid")
+        .all({ changeId })
+        .map(toFeedback);
+    },
+    addFeedback: (changeId: string, input: FeedbackInput) => {
+      requireChange(changeId);
+      const id = crypto.randomUUID();
+      const stamp = now();
+      saveFeedback.run({ id, changeId, text: input.text.trim(), ref: checkRef(input.ref), done: input.done === true ? 1 : 0, createdAt: stamp, stamp });
+      return requireFeedback(changeId, id);
+    },
+    updateFeedback: (changeId: string, id: string, input: Partial<FeedbackInput>) => {
+      const note = requireFeedback(changeId, id);
+      saveFeedback.run({
+        id,
+        changeId,
+        text: input.text?.trim() ?? note.text,
+        ref: input.ref === undefined ? note.ref : checkRef(input.ref),
+        done: (input.done ?? note.done) ? 1 : 0,
+        createdAt: note.createdAt,
+        stamp: now(),
+      });
+      return requireFeedback(changeId, id);
+    },
+    deleteFeedback: (changeId: string, id: string) => {
+      requireFeedback(changeId, id);
+      db.query("DELETE FROM change_feedback WHERE id = $id").run({ id });
     },
     diffChange: (id: string) => {
       const change = requireChange(id);

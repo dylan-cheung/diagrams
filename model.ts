@@ -7,6 +7,8 @@ export type {
   ChangeLink,
   ChangeStatus,
   DiffHunk,
+  Feedback,
+  FeedbackInput,
   IdeaItem,
   PseudoBlock,
   PseudoLayer,

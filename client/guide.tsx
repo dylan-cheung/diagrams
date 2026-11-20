@@ -448,6 +448,10 @@ export const Guide = () => {
             <p>
               To add links, select an item and click <b>Link items in …</b> in the panel. Then click items in that view to link or unlink them.
             </p>
+            <p>
+              Use <b>Feedback</b> at the bottom of the panel to collect notes while you review a change. A note can be about the selected item. Check a note
+              when it is done, and click <b>Copy list</b> to paste the open notes into a review or a ticket.
+            </p>
           </Section>
         </article>
       </div>

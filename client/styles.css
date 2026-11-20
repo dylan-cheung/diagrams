@@ -1890,6 +1890,82 @@ textarea.item-code {
   justify-self: start;
 }
 
+.note-count {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.feedback-head h2 {
+  align-self: center;
+}
+
+.feedback-new {
+  display: grid;
+  gap: 6px;
+}
+
+.feedback-new .check input {
+  width: auto;
+}
+
+.feedback-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feedback-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px;
+}
+
+.feedback-note > input {
+  width: auto;
+  margin-top: 7px;
+}
+
+.feedback-body {
+  display: grid;
+  gap: 2px;
+}
+
+.feedback-text {
+  field-sizing: content;
+  resize: none;
+  border-color: transparent;
+  background: none;
+  padding: 4px 6px;
+}
+
+.feedback-text:hover,
+.feedback-text:focus {
+  border-color: var(--line);
+}
+
+.feedback-item {
+  padding-left: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.feedback-note.done .feedback-text {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.feedback-done summary {
+  cursor: pointer;
+}
+
+.feedback-done .feedback-list {
+  margin-top: 8px;
+}
+
 .endpoints.broken,
 button.link.broken {
   color: var(--danger);

@@ -1,18 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CHANGE_VIEWS, levelOf, linkBetween, parseRef, tracedFrom, viewOfKind, type ChangeView } from "../change-items.ts";
+import { CHANGE_VIEWS, levelOf, linkBetween, parseRef, tracedFrom, viewOfKind, type ChangeItem, type ChangeView } from "../change-items.ts";
 import { toContent } from "../diff.ts";
 import { autoLayout } from "../layout.ts";
-import type { Change, ChangeDiff, ChangeInput, GraphContent, GraphSummary } from "../model.ts";
+import type { Change, ChangeDiff, ChangeInput, Feedback, FeedbackInput, GraphContent, GraphSummary } from "../model.ts";
 import { ApiError, api } from "./api.ts";
 import { edgeText } from "./canvas.tsx";
 import { CodeView, ConceptView, IdeaView, LAYER_NAMES, PseudoView, type ItemProps } from "./change-views.tsx";
+import { FeedbackSection } from "./feedback-panel.tsx";
 import { TextField } from "./fields.tsx";
 import { go, Link } from "./router.tsx";
 import { useVocabulary } from "./vocabulary.ts";
 
 const errorsOf = (error: unknown) => (error instanceof ApiError ? error.errors : [(error as Error).message]);
-
-type Item = { ref: string; view: ChangeView; text: string; broken: boolean };
 
 // One change in four views. A selected item stays selected when you switch views, and each view shows the items that
 // trace to it. In link mode, a click on an item in the next view up or down links it to the selected item or unlinks it.
@@ -24,6 +23,7 @@ export const ChangePage = ({ changeId, view }: { changeId: string; view: ChangeV
   const [diffError, setDiffError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
+  const [notes, setNotes] = useState<Feedback[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [missing, setMissing] = useState(false);
   const vocabulary = useVocabulary();
@@ -39,6 +39,10 @@ export const ChangePage = ({ changeId, view }: { changeId: string; view: ChangeV
     api
       .listGraphs()
       .then(setGraphs)
+      .catch((error: unknown) => setErrors(errorsOf(error)));
+    api
+      .listFeedback(changeId)
+      .then(setNotes)
       .catch((error: unknown) => setErrors(errorsOf(error)));
   }, [changeId]);
 
@@ -110,7 +114,7 @@ export const ChangePage = ({ changeId, view }: { changeId: string; view: ChangeV
 
   // The view, the text and whether the item is missing. A node or a hunk can leave the graph or the diff after a link
   // was made.
-  const itemOf = (ref: string): Item => {
+  const itemOf = (ref: string): ChangeItem => {
     const parsed = parseRef(ref);
     const id = parsed?.id ?? "";
     const kind = parsed?.kind ?? "idea";
@@ -158,6 +162,7 @@ export const ChangePage = ({ changeId, view }: { changeId: string; view: ChangeV
     onPick: pick,
     linking,
     linkCount: (ref) => linksOf(ref).length,
+    noteCount: (ref) => notes.filter((note) => note.ref === ref && !note.done).length,
   };
 
   const counts: Record<ChangeView, number> = {
@@ -175,6 +180,9 @@ export const ChangePage = ({ changeId, view }: { changeId: string; view: ChangeV
       .createGraph({ name: change.name, description: `The concepts of the change "${change.name}".` })
       .then((created) => save({ graphId: created.id }))
       .catch((error: unknown) => setErrors(errorsOf(error)));
+
+  const noteAction = (request: Promise<Feedback[]>) =>
+    void request.then(setNotes).catch((error: unknown) => setErrors(errorsOf(error)));
 
   const showItem = (ref: string) => {
     setSelected(ref);
@@ -316,6 +324,16 @@ export const ChangePage = ({ changeId, view }: { changeId: string; view: ChangeV
               <p className="mono">{change.id}</p>
             </section>
           )}
+          <FeedbackSection
+            title={change.name}
+            notes={notes}
+            selected={selectedItem}
+            itemOf={itemOf}
+            onAdd={(input) => noteAction(api.addFeedback(changeId, input).then((note) => [...notes, note]))}
+            onUpdate={(id, patch) => noteAction(api.updateFeedback(changeId, id, patch).then((note) => notes.map((item) => (item.id === id ? note : item))))}
+            onDelete={(id) => noteAction(api.deleteFeedback(changeId, id).then(() => notes.filter((item) => item.id !== id)))}
+            onShow={showItem}
+          />
         </aside>
       </div>
     </div>

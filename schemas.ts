@@ -511,6 +511,28 @@ export const ChangeInput = z
 
 export const ChangePatch = ChangeInput.partial().openapi("ChangePatch");
 
+export const Feedback = z
+  .object({
+    id: Id,
+    changeId: Id,
+    text: z.string().openapi({ example: "The 409 message should also say how to stop the active assistant." }),
+    ref: z.string().nullable().openapi({ description: "The item that the note is about, as kind:id (idea, node, pseudo or hunk). It is null for a note about the whole change.", example: "hunk:3fa9c21e07b4" }),
+    done: z.boolean().openapi({ description: "True when the feedback is handled." }),
+    createdAt: Timestamp,
+    updatedAt: Timestamp,
+  })
+  .openapi("Feedback", { description: "One note of feedback on a change, for example from a review of its four views." });
+
+export const FeedbackInput = z
+  .object({
+    text: Name("A note needs text."),
+    ref: z.string().min(1).nullable().optional().openapi({ description: "The item that the note is about, as kind:id. Omit it for a note about the whole change." }),
+    done: z.boolean().optional(),
+  })
+  .openapi("FeedbackInput");
+
+export const FeedbackPatch = FeedbackInput.partial().openapi("FeedbackPatch");
+
 export const DiffHunk = z
   .object({
     id: z.string().openapi({ description: "The id of the hunk: a hash of its file and its changed lines. It does not use line numbers, so it stays the same after a rebase." }),
@@ -577,4 +599,6 @@ export type ChangeLink = z.infer<typeof ChangeLink>;
 export type Change = z.infer<typeof Change>;
 export type ChangeInput = z.infer<typeof ChangeInput>;
 export type DiffHunk = z.infer<typeof DiffHunk>;
+export type Feedback = z.infer<typeof Feedback>;
+export type FeedbackInput = z.infer<typeof FeedbackInput>;
 export type ChangeDiff = z.infer<typeof ChangeDiff>;

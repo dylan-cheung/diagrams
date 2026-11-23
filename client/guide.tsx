@@ -13,6 +13,7 @@ const SECTIONS = [
   ["status", "Lifecycle status"],
   ["intent", "Intent"],
   ["shapes", "Kinds of graph"],
+  ["groups", "Groups"],
   ["flows", "Flows"],
   ["runs", "Runs"],
   ["versions", "Versions"],
@@ -338,6 +339,22 @@ export const Guide = () => {
               <li>Hyperedges: one edge that connects more than two nodes. Use a node in the middle.</li>
               <li>Nested nodes: a node inside a node. Use a separate graph, or a label.</li>
               <li>Schemas that limit which types can connect.</li>
+            </ul>
+          </Section>
+
+          <Section id="groups" title="Groups">
+            <p>
+              A group is a named box around nodes that belong together, with a description. For example, a graph of a Claude setup can have one group for
+              each CLAUDE.md file, with the rules that the file defines.
+            </p>
+            <ul>
+              <li>
+                Pick a group for a node in the <b>Group</b> list of its inspector. Pick <b>New group…</b> to make one.
+              </li>
+              <li>A node is in at most one group of a graph. In another graph, the same node can be in another group.</li>
+              <li>
+                Click the name of a group on the canvas to edit it. <b>Auto layout</b> places the nodes of a group together.
+              </li>
             </ul>
           </Section>
 

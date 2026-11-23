@@ -31,6 +31,9 @@ import {
   Group,
   GroupInput,
   GroupPatch,
+  Library,
+  LibraryInput,
+  LibraryPatch,
   NodeInGraphPatch,
   GraphView,
   LayoutInput,
@@ -84,8 +87,8 @@ const body = <T extends z.ZodType>(schema: T) => ({ body: { content: { "applicat
 
 const errors = {
   400: json(ErrorBody, "The request is not valid."),
-  404: json(ErrorBody, "A graph, node, edge, group, flow, run, proposal, change or note in the path does not exist."),
-  409: json(ErrorBody, "The graph name is already used, the proposal is not open, or the run cannot change."),
+  404: json(ErrorBody, "A graph, node, edge, group, flow, run, proposal, change, note or library in the path does not exist."),
+  409: json(ErrorBody, "The graph name or a type id is already used, the proposal is not open, the run cannot change, or the library is built in."),
 };
 
 const noContent = { 204: { description: "Done." } };
@@ -93,7 +96,11 @@ const noContent = { 204: { description: "Done." } };
 const route = <const T extends Parameters<typeof createRoute>[0]>(config: T) =>
   createRoute({ ...config, responses: { ...errors, ...config.responses } });
 
-const tag = { vocabulary: ["Vocabulary"], nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], flows: ["Flows"], groups: ["Groups"], runs: ["Runs"], proposals: ["Proposals"], changes: ["Changes"] };
+const VocabularyQuery = z.object({
+  graphId: z.string().optional().openapi({ param: { name: "graphId", in: "query" }, description: "Only the types of the libraries this graph uses." }),
+});
+
+const tag = { vocabulary: ["Vocabulary"], libraries: ["Libraries"], nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], flows: ["Flows"], groups: ["Groups"], runs: ["Runs"], proposals: ["Proposals"], changes: ["Changes"] };
 
 export const createApi = (store: GraphStore) => {
   const app = new OpenAPIHono({
@@ -124,10 +131,67 @@ export const createApi = (store: GraphStore) => {
         tags: tag.vocabulary,
         summary: "Get the design vocabulary",
         description:
-          "The node types, relationship types and lifecycle statuses that nodes and edges can use. Requests that use an id that is not in the vocabulary fail with 400. The vocabulary describes meaning only; the editor chooses how each type looks.",
+          "The node types, relationship types and lifecycle statuses that nodes and edges can use. The types come from the libraries. With graphId, only the types of the libraries that the graph uses: a node or an edge of that graph can use only those. Requests that use another type fail with 400. The vocabulary describes meaning only; the editor chooses how each type looks.",
+        request: { query: VocabularyQuery },
         responses: { 200: json(Vocabulary, "The vocabulary.") },
       }),
-      (c) => c.json(store.vocabulary(), 200),
+      (c) => c.json(store.vocabulary(c.req.valid("query").graphId), 200),
+    )
+    .openapi(
+      route({
+        method: "get",
+        path: "/api/libraries",
+        tags: tag.libraries,
+        summary: "List the libraries",
+        description:
+          "A library is a set of node types and relationship types. A graph uses some libraries (libraryIds on the graph), and its nodes and edges can use only their types. General is always first and every graph uses it.",
+        responses: { 200: json(z.array(Library), "Every library, General first, then by name.") },
+      }),
+      (c) => c.json(store.listLibraries(), 200),
+    )
+    .openapi(
+      route({ method: "get", path: "/api/libraries/{id}", tags: tag.libraries, summary: "Get a library", request: { params: IdParams }, responses: { 200: json(Library, "The library.") } }),
+      (c) => c.json(store.getLibrary(c.req.valid("param").id), 200),
+    )
+    .openapi(
+      route({
+        method: "post",
+        path: "/api/libraries",
+        tags: tag.libraries,
+        summary: "Create a library",
+        description:
+          "Each type id must be unique across all libraries. A node type with a within list is a second-tier type: each node of it is within a node of one of those first-tier types of the same library.",
+        request: body(LibraryInput),
+        responses: { 200: json(Library, "The new library.") },
+      }),
+      (c) => c.json(store.createLibrary(c.req.valid("json")), 200),
+    )
+    .openapi(
+      route({
+        method: "patch",
+        path: "/api/libraries/{id}",
+        tags: tag.libraries,
+        summary: "Change a library",
+        description: "nodeTypes and relationshipTypes each replace the whole list. Nodes and edges that use a removed type keep it; the editor marks it. General cannot change.",
+        request: { params: IdParams, ...body(LibraryPatch) },
+        responses: { 200: json(Library, "The changed library.") },
+      }),
+      (c) => c.json(store.updateLibrary(c.req.valid("param").id, c.req.valid("json")), 200),
+    )
+    .openapi(
+      route({
+        method: "delete",
+        path: "/api/libraries/{id}",
+        tags: tag.libraries,
+        summary: "Delete a library",
+        description: "Graphs stop using it. Nodes and edges keep their types. General cannot be deleted.",
+        request: { params: IdParams },
+        responses: noContent,
+      }),
+      (c) => {
+        store.deleteLibrary(c.req.valid("param").id);
+        return c.body(null, 204);
+      },
     )
     .openapi(
       route({ method: "get", path: "/api/nodes", tags: tag.nodes, summary: "List all nodes", responses: { 200: json(z.array(Node), "Every node, by name.") } }),
@@ -223,7 +287,7 @@ export const createApi = (store: GraphStore) => {
         path: "/api/graphs/{id}",
         tags: tag.graphs,
         summary: "Update a graph",
-        description: "Changes its name, its description, or both.",
+        description: "Changes its name, its description, its layout direction or its libraries. libraryIds replaces the list; general is always kept.",
         request: { params: IdParams, ...body(GraphPatch) },
         responses: { 200: json(Graph, "The updated graph.") },
       }),
@@ -250,13 +314,14 @@ export const createApi = (store: GraphStore) => {
         path: "/api/graphs/{id}/nodes",
         tags: tag.membership,
         summary: "Create a node in a graph",
-        description: "Every node belongs to a graph. This is the only way to create one.",
+        description:
+          "Every node belongs to a graph. This is the only way to create one. The type must be in a library that the graph uses. A node of a second-tier type (for example concept) needs a parentId: a node of this graph of a type in its within list.",
         request: { params: IdParams, ...body(NodeInGraphInput) },
         responses: { 200: json(Node, "The new node.") },
       }),
       (c) => {
-        const { position, groupId, ...input } = c.req.valid("json");
-        return c.json(store.createNodeInGraph(c.req.valid("param").id, input, position ?? null, groupId ?? null), 200);
+        const { position, groupId, parentId, ...input } = c.req.valid("json");
+        return c.json(store.createNodeInGraph(c.req.valid("param").id, input, position ?? null, groupId ?? null, parentId ?? null), 200);
       },
     )
     .openapi(
@@ -264,14 +329,15 @@ export const createApi = (store: GraphStore) => {
         method: "patch",
         path: "/api/graphs/{id}/nodes/{nodeId}",
         tags: tag.membership,
-        summary: "Put a node in a group of a graph",
-        description: "Sets the group of the node in this graph only. A node is in at most one group of a graph. Set groupId to null to take it out of its group.",
+        summary: "Set the group or the parent of a node in a graph",
+        description:
+          "Sets the group or the parent of the node in this graph only. A node is in at most one group of a graph; set groupId to null to take it out of its group. parentId moves a node of a second-tier type into another node of an allowed type.",
         request: { params: GraphNodeParams, ...body(NodeInGraphPatch) },
         responses: { 200: json(GraphView, "The updated graph.") },
       }),
       (c) => {
         const { id, nodeId } = c.req.valid("param");
-        return c.json(store.setNodeGroup(id, nodeId, c.req.valid("json").groupId), 200);
+        return c.json(store.setNodePlacement(id, nodeId, c.req.valid("json")), 200);
       },
     )
     .openapi(
@@ -322,7 +388,8 @@ export const createApi = (store: GraphStore) => {
       }),
       (c) => {
         const { id, nodeId } = c.req.valid("param");
-        return c.json(store.addNodeToGraph(id, nodeId, c.req.valid("json").position ?? null), 200);
+        const { position, parentId } = c.req.valid("json");
+        return c.json(store.addNodeToGraph(id, nodeId, position ?? null, parentId ?? null), 200);
       },
     )
     .openapi(
@@ -331,7 +398,7 @@ export const createApi = (store: GraphStore) => {
         path: "/api/graphs/{id}/nodes/{nodeId}",
         tags: tag.membership,
         summary: "Remove a node from a graph",
-        description: "Also removes its edges from this graph. A node or an edge that no other graph holds is deleted.",
+        description: "Also removes its edges from this graph, and the nodes within it. A node or an edge that no other graph holds is deleted.",
         request: { params: GraphNodeParams },
         responses: noContent,
       }),
@@ -806,9 +873,9 @@ export const createApi = (store: GraphStore) => {
     openapi: "3.1.0",
     info: {
       title: "Diagram API",
-      version: "4.4.0",
+      version: "4.5.0",
       description:
-        "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A group is a named box that holds a set of the nodes of one graph. A flow is a sequence of steps through a graph: one specific path, such as an edge case of a feature. A run is one instance of a flow on a published version. A published version is a copy of a graph, with its flows, that does not change. A proposal is a proposed graph that you compare with a version before you apply it. A change is one code change in four views (idea, concepts, pseudocode and code) with trace links between them. The Guide page of the app (/guide) explains each part.",
+        "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A graph uses libraries, and each library gives node and relationship types; a node of a second-tier type is within a node of a first-tier type. A group is a named box that holds a set of the nodes of one graph. A flow is a sequence of steps through a graph: one specific path, such as an edge case of a feature. A run is one instance of a flow on a published version. A published version is a copy of a graph, with its flows, that does not change. A proposal is a proposed graph that you compare with a version before you apply it. A change is one code change in four views (idea, concepts, pseudocode and code) with trace links between them. The Guide page of the app (/guide) explains each part.",
     },
   };
   app.doc31("/openapi.json", doc);

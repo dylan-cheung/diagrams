@@ -7,11 +7,14 @@ export type Route =
   | { page: "graph"; graphId: string }
   | { page: "proposal"; graphId: string; proposalId: string }
   | { page: "changes" }
+  | { page: "libraries" }
+  | { page: "library"; libraryId: string }
   | { page: "change"; changeId: string; view: ChangeView };
 
 export const parsePath = (pathname: string): Route => {
   const [root, graphId, part, proposalId] = pathname.split("/").filter((segment) => segment !== "").map(decodeURIComponent);
   if (root === "guide") return { page: "guide" };
+  if (root === "libraries") return graphId == null ? { page: "libraries" } : { page: "library", libraryId: graphId };
   if (root === "changes") {
     if (graphId == null) return { page: "changes" };
     const view = CHANGE_VIEWS.find((item) => item.view === part)?.view ?? "idea";
@@ -27,6 +30,8 @@ export const routePath = (route: Route) => {
   if (route.page === "list") return "/";
   if (route.page === "guide") return "/guide";
   if (route.page === "changes") return "/changes";
+  if (route.page === "libraries") return "/libraries";
+  if (route.page === "library") return `/libraries/${encodeURIComponent(route.libraryId)}`;
   if (route.page === "change") return `/changes/${encodeURIComponent(route.changeId)}/${route.view}`;
   const base = `/graphs/${encodeURIComponent(route.graphId)}`;
   if (route.page === "proposal") return `${base}/proposals/${encodeURIComponent(route.proposalId)}`;

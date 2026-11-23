@@ -6,9 +6,9 @@ const PROTOCOL_VERSION = "2025-06-18";
 
 export const INSTRUCTIONS = [
   "Diagram is the user's local app for graphs of systems and features, and for reviewing code changes. It runs at http://127.0.0.1:4848.",
-  "- A graph holds nodes and edges. Each node and edge can have a type, a status, a description (what it is) and an intent (why it exists); get_vocabulary lists the types and statuses. A flow is one path through a graph, step by step. A group is a named box with a description that holds a set of the nodes of one graph, for example the parts that one file defines; each node has the groupId of its group. Publish saves a version that does not change.",
+  "- A graph holds nodes and edges. Each node and edge can have a type, a status, a description (what it is) and an intent (why it exists). The types come from libraries (list_libraries): a graph uses some libraries (libraryIds; General, the node and edge without a type, is always on), and its nodes and edges can use only their types. get_vocabulary with graphId lists the types a graph can use. A node of a second-tier type, such as concept, is within a node of a first-tier type: give its parentId. A flow is one path through a graph, step by step. A group is a named box with a description that holds a set of the nodes of one graph, for example the parts that one file defines; each node has the groupId of its group. Publish saves a version that does not change.",
   "- A change shows one code change in four views: the idea (notes and points), the concepts (a graph), the pseudocode (blocks by layer) and the code (the diff of a git branch). Trace links connect each item to the items in the next view that carry it out. Feedback is a list of notes that the user writes while reviewing a change.",
-  "- To change a graph that already has content, prefer create_proposal: the user reviews the proposal in Diagram before it changes the graph. Build a new graph directly with create_graph, add_node and add_edge.",
+  "- To change a graph that already has content, prefer create_proposal: the user reviews the proposal in Diagram before it changes the graph. Build a new graph directly with create_graph (with the libraryIds it needs), add_node and add_edge.",
   "- Give the user links to what you made or changed: http://127.0.0.1:4848/graphs/<graph id> for a graph, and http://127.0.0.1:4848/changes/<change id>/idea for a change (or /concepts, /pseudocode, /code).",
 ].join("\n");
 
@@ -16,6 +16,9 @@ export const INSTRUCTIONS = [
 // Routes that delete a graph or a change, or that apply a proposal, are not tools: the user does those in Diagram.
 const ROUTES: { name: string; method: "get" | "post" | "patch" | "put" | "delete"; path: string }[] = [
   { name: "get_vocabulary", method: "get", path: "/api/vocabulary" },
+  { name: "list_libraries", method: "get", path: "/api/libraries" },
+  { name: "create_library", method: "post", path: "/api/libraries" },
+  { name: "update_library", method: "patch", path: "/api/libraries/{id}" },
   { name: "list_graphs", method: "get", path: "/api/graphs" },
   { name: "get_graph", method: "get", path: "/api/graphs/{id}" },
   { name: "create_graph", method: "post", path: "/api/graphs" },
@@ -24,6 +27,7 @@ const ROUTES: { name: string; method: "get" | "post" | "patch" | "put" | "delete
   { name: "update_node", method: "patch", path: "/api/nodes/{id}" },
   { name: "remove_node_from_graph", method: "delete", path: "/api/graphs/{id}/nodes/{nodeId}" },
   { name: "set_node_group", method: "patch", path: "/api/graphs/{id}/nodes/{nodeId}" },
+  { name: "set_node_parent", method: "patch", path: "/api/graphs/{id}/nodes/{nodeId}" },
   { name: "create_group", method: "post", path: "/api/graphs/{id}/groups" },
   { name: "update_group", method: "patch", path: "/api/graphs/{id}/groups/{groupId}" },
   { name: "delete_group", method: "delete", path: "/api/graphs/{id}/groups/{groupId}" },
@@ -50,7 +54,7 @@ const ROUTES: { name: string; method: "get" | "post" | "patch" | "put" | "delete
   { name: "update_feedback", method: "patch", path: "/api/changes/{id}/feedback/{noteId}" },
 ];
 
-const ID_NAMES: Record<string, string> = { graphs: "graphId", changes: "changeId", nodes: "nodeId", edges: "edgeId" };
+const ID_NAMES: Record<string, string> = { graphs: "graphId", changes: "changeId", nodes: "nodeId", edges: "edgeId", libraries: "libraryId" };
 
 type Schema = Record<string, any>;
 type OpenApi = { paths?: Record<string, Record<string, any>>; components?: { schemas?: Record<string, Schema> } };

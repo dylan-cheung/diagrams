@@ -140,7 +140,7 @@ export const SelectField = ({
       <span>{label}</span>
       <select value={value ?? ""} onChange={(e) => onCommit(e.target.value === "" ? null : e.target.value)}>
         <option value="">{empty}</option>
-        {value != null && selected == null && <option value={value}>{value} (not in the vocabulary)</option>}
+        {value != null && selected == null && <option value={value}>{value} (not in the libraries of this graph)</option>}
         {options.map(({ id, name }) => (
           <option key={id} value={id}>
             {name}

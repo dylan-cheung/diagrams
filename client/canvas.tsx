@@ -1,4 +1,5 @@
 import {
+  applyNodeChanges,
   Background,
   BaseEdge,
   ConnectionMode,
@@ -16,11 +17,12 @@ import {
   type Edge,
   type EdgeProps,
   type Node,
+  type NodeChange,
   type NodeProps,
 } from "@xyflow/react";
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { assignParallelSlots, edgePath, LABEL_STOPS, labelSize, loopPath, placeLabels, pointAlong, routePath, snapRoute, type Box, type Label, type ParallelSlot, type Point } from "../geometry.ts";
-import { GROUP_PADDING, NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
+import { CONTAINER_PADDING, GROUP_PADDING, NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
 import { GROUP_COLORS, type ChangeStatus, type ContentEdge, type GraphContent, type Position, type Vocabulary } from "../model.ts";
 import { termName } from "../vocabulary.ts";
 import { NODE_TYPE_DRAG, NodePalette } from "./node-palette.tsx";
@@ -57,7 +59,15 @@ export type FlowPath = { steps: Map<string, number[]>; edges: Set<string>; curre
 type Design = { type: string | null; status: string | null };
 type StepState = "current" | "pending" | undefined;
 type EntityNode = Node<
-  Design & { name: string; labels: string[]; mark: ChangeStatus | undefined; steps: number[] | undefined; onPath: boolean | undefined; stepState: StepState },
+  Design & {
+    name: string;
+    labels: string[];
+    mark: ChangeStatus | undefined;
+    steps: number[] | undefined;
+    onPath: boolean | undefined;
+    stepState: StepState;
+    container: boolean;
+  },
   "entity"
 >;
 type EdgeFocus = "hovered" | "dimmed" | undefined;
@@ -101,8 +111,8 @@ const EntityNodeView = ({ data, selected }: NodeProps<EntityNode>) => {
   const status = termName(vocabulary.statuses, data.status);
   return (
     <div
-      className={`entity${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}${pathClass(data.onPath)}${stepClass(data.stepState)}`}
-      style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
+      className={`entity${data.container ? " container" : ""}${selected ? " selected" : ""}${markClass(data.mark)}${designClass(data)}${pathClass(data.onPath)}${stepClass(data.stepState)}`}
+      style={data.container ? { width: "100%", height: "100%" } : { width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
     >
       {data.steps != null && data.steps.length > 0 && <div className="step-badge">{data.steps.join(", ")}</div>}
       {HANDLES.map(({ id, position }) => (
@@ -172,12 +182,56 @@ const PRO_OPTIONS = { hideAttribution: true };
 const NODE_TYPES = { entity: EntityNodeView };
 const EDGE_TYPES = { floating: FloatingEdgeView };
 
+// A node that holds other nodes is a box around them. Its position and size follow the live positions of the nodes in it,
+// as the box of a group does.
+const fitContainers = (nodes: EntityNode[], parents: Map<string, string>): EntityNode[] => {
+  const inner = new Map<string, EntityNode[]>();
+  for (const node of nodes) {
+    const parent = parents.get(node.id);
+    if (parent != null) inner.set(parent, [...(inner.get(parent) ?? []), node]);
+  }
+  if (inner.size === 0) return nodes;
+  return nodes.map((node) => {
+    const children = inner.get(node.id);
+    if (children == null) return node.data.container ? { ...node, data: { ...node.data, container: false }, width: undefined, height: undefined, style: undefined } : node;
+    const boxes = children.map(boxOf);
+    const left = Math.min(...boxes.map(({ x }) => x)) - CONTAINER_PADDING.side;
+    const top = Math.min(...boxes.map(({ y }) => y)) - CONTAINER_PADDING.top;
+    const width = Math.max(...boxes.map(({ x, width: w }) => x + w)) + CONTAINER_PADDING.side - left;
+    const height = Math.max(...boxes.map(({ y, height: h }) => y + h)) + CONTAINER_PADDING.bottom - top;
+    return { ...node, position: { x: left, y: top }, width, height, style: { width, height }, zIndex: 0, data: { ...node.data, container: true } };
+  });
+};
+
+const descendantsOf = (id: string, parents: Map<string, string>) => {
+  const found = new Set<string>();
+  let added = true;
+  while (added) {
+    added = false;
+    for (const [child, parent] of parents) {
+      if ((parent === id || found.has(parent)) && !found.has(child)) {
+        found.add(child);
+        added = true;
+      }
+    }
+  }
+  return found;
+};
+
 // With a focus, the canvas shows the nodes in it and dims the rest, as it does for the path of a flow.
-const toFlowNodes = (view: GraphContent, selection: Selection, marks: Marks | undefined, path: FlowPath | undefined, focus: Set<string> | undefined): EntityNode[] =>
-  view.nodes.map((node) => ({
+const toFlowNodes = (
+  view: GraphContent,
+  selection: Selection,
+  marks: Marks | undefined,
+  path: FlowPath | undefined,
+  focus: Set<string> | undefined,
+  parents: Map<string, string>,
+): EntityNode[] =>
+  fitContainers(view.nodes.map((node) => ({
     id: node.id,
     type: "entity",
     position: node.position ?? { x: 0, y: 0 },
+    zIndex: parents.has(node.id) ? 1 : 0,
     data: {
       name: node.name,
       type: node.type,
@@ -187,9 +241,10 @@ const toFlowNodes = (view: GraphContent, selection: Selection, marks: Marks | un
       steps: path == null ? undefined : (path.steps.get(node.id) ?? []),
       onPath: path != null ? path.steps.has(node.id) : focus?.has(node.id),
       stepState: path?.current === node.id ? "current" : path?.pending?.has(node.id) === true ? "pending" : undefined,
+      container: false,
     },
     selected: selection?.kind === "node" && selection.id === node.id,
-  }));
+  })), parents);
 
 export const edgeText = (edge: Pick<ContentEdge, "label" | "type">, vocabulary: Vocabulary) =>
   edge.label !== "" ? edge.label : (termName(vocabulary.relationshipTypes, edge.type ?? null) ?? "");
@@ -197,8 +252,8 @@ export const edgeText = (edge: Pick<ContentEdge, "label" | "type">, vocabulary: 
 const boxOf = (node: EntityNode): Box => ({
   x: node.position.x,
   y: node.position.y,
-  width: node.measured?.width ?? NODE_WIDTH,
-  height: node.measured?.height ?? NODE_HEIGHT,
+  width: node.width ?? node.measured?.width ?? NODE_WIDTH,
+  height: node.height ?? node.measured?.height ?? NODE_HEIGHT,
 });
 
 // Places on a route where its label can go: points along the route, then beside its middle, for a short route such as
@@ -211,16 +266,20 @@ const routeLabelCandidates = (route: Point[], width: number) => {
 
 // The saved routes that still fit: a route is dropped as soon as one of its nodes is not at its saved position, for
 // example while it is dragged.
-const fittingRoutes = (view: GraphContent, nodes: EntityNode[], routes: Map<string, Point[]> | undefined) => {
+const fittingRoutes = (view: GraphContent, nodes: EntityNode[], routes: Map<string, Point[]> | undefined, parents: Map<string, string>) => {
   const fitting = new Map<string, Point[]>();
   if (routes == null) return fitting;
-  const live = new Map(nodes.map((node) => [node.id, node.position]));
+  const live = new Map(nodes.map((node) => [node.id, node]));
   const unmoved = new Set(
     view.nodes.flatMap(({ id, position }) => {
       const now = live.get(id);
-      return position != null && now != null && now.x === position.x && now.y === position.y ? [id] : [];
+      return position != null && now != null && !now.data.container && now.position.x === position.x && now.position.y === position.y ? [id] : [];
     }),
   );
+  // A box around other nodes takes its place from them, so it has not moved while they have not.
+  for (const node of nodes) {
+    if (node.data.container && [...descendantsOf(node.id, parents)].every((id) => unmoved.has(id))) unmoved.add(node.id);
+  }
   for (const edge of view.edges) {
     const route = routes.get(edge.id);
     if (route != null && unmoved.has(edge.source) && unmoved.has(edge.target)) fitting.set(edge.id, route);
@@ -237,6 +296,7 @@ const labelPlaces = (
   routes: Map<string, Point[]>,
 ) => {
   const boxes = new Map(nodes.map((node) => [node.id, boxOf(node)]));
+  const obstacles = nodes.filter(({ data }) => !data.container).map(boxOf);
   const labels: Label[] = [];
   for (const edge of view.edges) {
     const text = edgeText(edge, vocabulary);
@@ -253,7 +313,7 @@ const labelPlaces = (
           : LABEL_STOPS.map(edgePath(source, target, slot, edge.source > edge.target).at);
     labels.push({ id: edge.id, candidates, ...labelSize(text) });
   }
-  return placeLabels(labels, [...boxes.values()]);
+  return placeLabels(labels, obstacles);
 };
 
 const toFlowEdges = (
@@ -268,9 +328,10 @@ const toFlowEdges = (
   savedRoutes: Map<string, Point[]> | undefined,
   path: FlowPath | undefined,
   focus: Set<string> | undefined,
+  parents: Map<string, string>,
 ): FloatingEdge[] => {
   const slots = assignParallelSlots(view.edges);
-  const routes = fittingRoutes(view, nodes, savedRoutes);
+  const routes = fittingRoutes(view, nodes, savedRoutes, parents);
   const places = labelPlaces(view, nodes, vocabulary, slots, routes);
   return view.edges.map((edge) => ({
     id: edge.id,
@@ -299,8 +360,20 @@ const toFlowEdges = (
   }));
 };
 
+const NO_PARENTS = new Map<string, string>();
+
+// The innermost node under a point of the canvas, for a drop of a node type onto it.
+const nodeAt = (nodes: EntityNode[], at: Point) =>
+  nodes
+    .filter((node) => {
+      const box = boxOf(node);
+      return at.x >= box.x && at.x <= box.x + box.width && at.y >= box.y && at.y <= box.y + box.height;
+    })
+    .sort((a, b) => boxOf(a).width * boxOf(a).height - boxOf(b).width * boxOf(b).height)[0];
+
 export const GraphCanvas = ({
   view,
+  parents = NO_PARENTS,
   selection,
   onSelect,
   onMove,
@@ -328,16 +401,36 @@ export const GraphCanvas = ({
   routes?: Map<string, Point[]>;
   path?: FlowPath;
   focus?: Set<string>;
-  onAddNode?: (type: string | null, position: Position) => void;
+  onAddNode?: (type: string | null, position: Position, into?: string) => void;
   paletteFooter?: ReactNode;
+  parents?: Map<string, string>;
   readOnly?: boolean;
   groups?: CanvasGroup[];
   selectedGroup?: string | null;
   onSelectGroup?: (groupId: string) => void;
   children?: ReactNode;
 }) => {
-  const [nodes, setNodes, onNodesChange] = useNodesState<EntityNode>(toFlowNodes(view, selection, marks, path, focus));
-  useEffect(() => setNodes(toFlowNodes(view, selection, marks, path, focus)), [view, selection, marks, path, focus, setNodes]);
+  const [nodes, setNodes] = useNodesState<EntityNode>(toFlowNodes(view, selection, marks, path, focus, parents));
+  useEffect(() => setNodes(toFlowNodes(view, selection, marks, path, focus, parents)), [view, selection, marks, path, focus, parents, setNodes]);
+  // A drag of a box moves the nodes in it by the same distance. Then each box fits around its nodes again.
+  const onNodesChange = useCallback(
+    (changes: NodeChange<EntityNode>[]) =>
+      setNodes((current) => {
+        let next = applyNodeChanges(changes, current);
+        const moving = new Set(changes.flatMap((change) => (change.type === "position" && change.position != null ? [change.id] : [])));
+        for (const change of changes) {
+          if (change.type !== "position" || change.position == null) continue;
+          const before = current.find(({ id }) => id === change.id);
+          const inner = descendantsOf(change.id, parents);
+          if (before == null || inner.size === 0) continue;
+          const dx = change.position.x - before.position.x;
+          const dy = change.position.y - before.position.y;
+          next = next.map((node) => (inner.has(node.id) && !moving.has(node.id) ? { ...node, position: { x: node.position.x + dx, y: node.position.y + dy } } : node));
+        }
+        return fitContainers(next, parents);
+      }),
+    [parents, setNodes],
+  );
   const vocabulary = useVocabulary();
   const [hovered, setHovered] = useState<string | null>(null);
   const { screenToFlowPosition } = useReactFlow();
@@ -346,8 +439,8 @@ export const GraphCanvas = ({
   const grow = useStore((state) => Math.max(1, 1 / state.transform[2]));
   const canAdd = onAddNode != null && !readOnly;
   const edges = useMemo(
-    () => toFlowEdges(view, nodes, vocabulary, selection, marks, hovered, setHovered, onSelect, routes, path, focus),
-    [view, nodes, vocabulary, selection, marks, hovered, onSelect, routes, path, focus],
+    () => toFlowEdges(view, nodes, vocabulary, selection, marks, hovered, setHovered, onSelect, routes, path, focus, parents),
+    [view, nodes, vocabulary, selection, marks, hovered, onSelect, routes, path, focus, parents],
   );
 
   return (
@@ -359,6 +452,7 @@ export const GraphCanvas = ({
       nodeTypes={NODE_TYPES}
       edgeTypes={EDGE_TYPES}
       onNodesChange={onNodesChange}
+      elevateNodesOnSelect={false}
       nodesDraggable={!readOnly}
       nodesConnectable={!readOnly}
       elementsSelectable={path == null}
@@ -372,7 +466,7 @@ export const GraphCanvas = ({
         event.preventDefault();
         const type = event.dataTransfer.getData(NODE_TYPE_DRAG);
         const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-        onAddNode(type === "" ? null : type, { x: Math.round(at.x - NODE_WIDTH / 2), y: Math.round(at.y - NODE_HEIGHT / 2) });
+        onAddNode(type === "" ? null : type, { x: Math.round(at.x - NODE_WIDTH / 2), y: Math.round(at.y - NODE_HEIGHT / 2) }, nodeAt(nodes, at)?.id);
       }}
       connectionMode={ConnectionMode.Loose}
       connectionRadius={40}
@@ -384,9 +478,19 @@ export const GraphCanvas = ({
       onEdgeMouseEnter={(_, edge) => setHovered(edge.id)}
       onEdgeMouseLeave={(_, edge) => setHovered((current) => (current === edge.id ? null : current))}
       onPaneClick={() => onSelect(null)}
-      onNodeDragStop={(_, __, dragged) =>
-        onMove?.(Object.fromEntries(dragged.map((node) => [node.id, { x: Math.round(node.position.x), y: Math.round(node.position.y) }])))
-      }
+      onNodeDragStop={(_, __, dragged) => {
+        // The nodes in a dragged box moved with it, and each box around a dragged node changed its place.
+        const moved = new Set(dragged.map(({ id }) => id));
+        for (const { id } of dragged) for (const inner of descendantsOf(id, parents)) moved.add(inner);
+        for (const { id } of dragged) {
+          for (let parent = parents.get(id); parent != null; parent = parents.get(parent)) moved.add(parent);
+        }
+        onMove?.(
+          Object.fromEntries(
+            nodes.filter(({ id }) => moved.has(id)).map((node) => [node.id, { x: Math.round(node.position.x), y: Math.round(node.position.y) }]),
+          ),
+        );
+      }}
       onDelete={({ nodes: removedNodes, edges: removedEdges }) =>
         onRemove?.(
           removedNodes.map(({ id }) => id),

@@ -10,7 +10,8 @@ The app uses the labeled property graph model of ISO GQL (ISO/IEC 39075). In gra
 |---|---|---|
 | Node | `id`, `name`, `description`, `type`, `intent`, `status`, `labels[]`, `properties{}` | The core entity. A node does not store its edges. All fields except the name are optional. |
 | Edge | `id`, `source`, `target`, `directed`, `type`, `label`, `description`, `intent`, `status`, `properties{}` | Its own entity. Deleting a node deletes its edges. The editor shows the label, or the type name when the label is empty. |
-| Graph | `id`, `name`, `description` + its nodes (with `x`, `y`) and edges | A named subgraph. Every node and edge is in a graph: you create them only in a graph (`POST /api/graphs/{id}/nodes` and `.../edges`), and when no graph holds one any more, it is deleted. The API can also put one node in many graphs, with a different position in each. A graph can include an edge only if it includes both nodes. The description says what the graph is for. It is required when you create a graph. |
+| Graph | `id`, `name`, `description`, `libraryIds[]` + its nodes (with `parentId`) (with `x`, `y`) and edges | A named subgraph. Every node and edge is in a graph: you create them only in a graph (`POST /api/graphs/{id}/nodes` and `.../edges`), and when no graph holds one any more, it is deleted. The API can also put one node in many graphs, with a different position in each. A graph can include an edge only if it includes both nodes. The description says what the graph is for. It is required when you create a graph. |
+| Library | `id`, `name`, `description`, `builtIn`, `nodeTypes[]` (`id`, `name`, `description`, `within[]`), `relationshipTypes[]` | A set of node and relationship types that a graph can use. See **Libraries** below. |
 | Group | `id`, `graphId`, `name`, `description`, `color` | A named box in one graph that holds a set of its nodes, for example the parts that one file defines. Each node of a graph has a `groupId`, and a node is in at most one group of a graph. The same node can be in a different group in another graph. |
 | Flow | `id`, `graphId`, `name`, `description`, `steps[]` (`nodeId`, `edgeId`) | One specific path through a graph, for example the main path of a feature or an edge case. A graph can have many flows. Each step after the first follows an edge of the graph from the node of the step before. A flow is part of the draft, so a publish saves it in the version. |
 | Run | `id`, `graphId`, `version`, `flowId`, `label`, `status`, `note`, `properties{}`, `events[]` (`step`, `nodeId`, `at`, `note`), `startedAt`, `endedAt` | One instance of a flow on a published version. `status` is `running`, `completed`, `failed` or `cancelled`. The last event is the current step. Runs stay after the graph is deleted. |
@@ -21,19 +22,29 @@ Property values are strings, numbers, booleans or `null`. Use `properties` for e
 
 ### Design vocabulary
 
-The vocabulary is the set of node types, relationship types and lifecycle statuses that the editor and API clients (for example Claude) share. `GET /api/vocabulary` returns it.
+The vocabulary is the set of node types, relationship types and lifecycle statuses that the editor and API clients (for example Claude) share. The types come from the libraries. The statuses (`proposed`, `planned`, `active`, `deprecated`, `retired`) are the same for every graph. `GET /api/vocabulary` returns all of them, and `GET /api/vocabulary?graphId=` returns the types that one graph can use.
 
-| Term | Default ids |
-|---|---|
-| Node type (`type` on a node) | `service`, `module`, `database`, `external-system`, `user-interface`, `decision` |
-| Relationship type (`type` on an edge) | `calls`, `publishes-event`, `consumes-event`, `reads-from`, `writes-to`, `depends-on` |
-| Lifecycle status (`status` on a node or an edge) | `proposed`, `planned`, `active`, `deprecated`, `retired` |
-
-- `type` and `status` hold a vocabulary id or `null`. The server rejects an id that is not in the vocabulary, for every route that writes nodes, edges or proposals. The editor uses the same API, so the same rules apply to it.
+- `type` and `status` hold a vocabulary id or `null`. The server rejects a type that is not in a library of the graph, for every route that writes nodes, edges or proposals. The editor uses the same API, so the same rules apply to it.
 - `intent` says why the element exists. `description` says what it is.
-- The vocabulary holds meaning only. The editor sets the look of each default type and status in `client/styles.css`. A type without a style shows in the default look.
-- To change the vocabulary, set `VOCABULARY` to a JSON file with `nodeTypes`, `relationshipTypes` and `statuses`. Each is a list of `{ "id", "name", "description" }`. An id uses lowercase letters, digits and hyphens. The defaults are in `vocabulary.ts`.
-- When you remove an id from the vocabulary, nodes and edges that use it keep it. The editor marks it as not in the vocabulary.
+- The vocabulary holds meaning only. The editor sets the look of each type and status in `client/styles.css`. A type without a style shows in the default look.
+
+### Libraries
+
+A library is a set of node types and relationship types for one kind of graph. A graph turns on libraries (`libraryIds`), and its nodes and edges can use only their types. The database starts with these libraries (`libraries.ts`):
+
+| Library | Node types | Relationship types |
+|---|---|---|
+| General | the node without a type | the edge without a type |
+| Systems | `service`, `module`, `database`, `external-system`, `user-interface`, `decision` | `calls`, `publishes-event`, `consumes-event`, `reads-from`, `writes-to`, `depends-on` |
+| Claude Code | `session`, `memory-file`, `settings-file`, `skill`, `plugin`, `agent`, `slash-command`, `hook`, `mcp-server`, `output-style`; second tier: `concept` | `loads`, `invokes`, `provides`, `references`, `configures`, `connects-to` |
+| Codebase | `domain`; second tier: `controller-layer`, `service-layer`, `repository-layer` | `http-request`, `in-process-call` |
+
+- **General** is built in. Every graph has it, so every graph can be a basic graph. It cannot change.
+- A new graph has General only, unless `libraryIds` names more. Graphs from before libraries got Systems.
+- A **second-tier** type lists in `within` the first-tier types of its library that can hold it. Each node of that type is within one such node of the graph (`parentId` on the node in the graph). Give `parentId` when you add the node (`POST /api/graphs/{id}/nodes`), or change it with `PATCH /api/graphs/{id}/nodes/{nodeId}`. A first-tier node never has a parent.
+- When a node leaves a graph, the nodes within it leave too. A published version keeps the parents. Proposals do not set parents yet.
+- Each type id is unique across all libraries. `POST /api/libraries` adds a library; `PATCH /api/libraries/{id}` changes it, and `nodeTypes` and `relationshipTypes` each replace the whole list.
+- When a type leaves a library, or a library leaves a graph, nodes and edges keep their types. The editor marks such a type as not in the libraries of the graph.
 
 ### Published versions
 
@@ -107,7 +118,7 @@ A proposal is a changed copy of a graph that you review before it changes the gr
 4. In the app, open the proposal from **Proposals** in the panel of the graph, or at `/graphs/{id}/proposals/{proposalId}`. The **Ledger** tab lists each added, removed and changed node and edge, with the fields before and after. The **Graph** tab shows both graphs on one canvas in color. A warning shows when a changed node is also in other graphs, because the change applies there too.
 5. **Apply and publish** makes the graph equal to the proposal and publishes a new version. **Apply to draft** changes only the editable graph. Apply replaces edits that are not published. Use `PUT` on the proposal to revise it.
 
-Not supported: hyperedges (one edge with more than two nodes), nested nodes, and schemas that limit which labels can connect.
+Not supported: hyperedges (one edge with more than two nodes), nodes more than one level deep, and schemas that limit which labels can connect.
 
 ## Run
 
@@ -123,7 +134,6 @@ The app opens at http://127.0.0.1:4848.
 | `PORT` | `4848` | Server port |
 | `GRAPH_DB` | `~/Library/Application Support/diagram/graphs.sqlite` | Database file |
 | `OPEN_BROWSER` | on | Set `0` to not open the browser |
-| `VOCABULARY` | the defaults in `vocabulary.ts` | A JSON file with the design vocabulary |
 
 `bun run build` makes one binary, `dist/diagram`, that holds the server and the UI.
 
@@ -131,6 +141,8 @@ The app opens at http://127.0.0.1:4848.
 
 - **Walkthrough graph** (`/graphs/walkthrough`): a realistic example that uses every node type, relationship type and status. It has two flows: the main path ("Small claim is paid at once") and an edge case ("Large claim needs an adjuster"). Each flow has two example runs on version 1: one completed, and one that is still running or failed. The server makes it and publishes version 1 at start when the database does not have it, so it comes back after a delete. The data is in `walkthrough.ts`.
 - **Changes** (`/changes`, in the top bar): the table of changes. Click **+** to add one with a name, a repository, a base branch and a branch. A change page (`/changes/{id}/{view}`) has a tab for each view: **Idea**, **Concepts**, **Pseudocode** and **Code**. Click an item to select it. When you switch tabs, the items that trace to it stay marked, the rest are dimmed, and each tab shows how many items are linked. The panel lists the links of the selected item in the next view up and down. **Link items in …** opens that view in link mode: a click on an item there links it to the selected item, or removes the link. The concept view shows the graph read-only; **Edit the graph** opens it. The **Feedback** section at the bottom of the panel collects notes while you look at the change: type a note and click **Add note** (or press ⌘Enter). With an item selected, the note is about that item, and the item shows a note count in its view. Click the item under a note to go to it, check a note when it is done, and click **Copy list** to copy the open notes as a markdown list.
+- **Libraries** (`/libraries`, in the top bar): the table of libraries. Click **+** to add one. A library page (`/libraries/{id}`) edits its name, description, node types and relationship types. Set a node type to **Second tier, within…** and pick the first-tier types that can hold it. **Save** saves all changes at once. The page also lists the graphs that use the library.
+- In a graph, with nothing selected, the **Libraries** section of the panel turns libraries on and off. The bar on the left of the canvas has one part for each library that is on. A second-tier type has a dashed border: drop it onto a node that can hold it, or select such a node and click the button. A node that holds other nodes is a box around them, with its type and name at the top. Drag the box to move it with its nodes. The **Within** list in the inspector moves a node to another holder.
 - **Guide** (`/guide`, in the top bar next to **Graphs** and **API**) explains the parts of a graph: node types, edges, statuses, intent, the kinds of graph you can make, versions and proposals. It shows the current vocabulary in the same look as the canvas.
 - The first page is a table of graphs. Search it, and click a column name to sort it. The table shows the latest version, a **draft** mark when the draft has changes that are not published, and the number of open proposals. Click **+** to add a graph with a name and a description of its purpose. Click **…** at the end of a row for actions on that graph. **Delete** deletes the graph after you confirm.
 - Click a graph to open its draft (`/graphs/{id}`). A floating group at the top left of the canvas shows **←** (back to the list of graphs), the graph name (click it to rename the graph) and **⋮**, a menu with **Delete graph**. The draft is always editable, and each change saves at once. The status next to **Publish** at the top right of the canvas says **Saving…** while a change is on its way, and then if the draft has changes since the latest version. Edit the graph purpose in the panel, add nodes from the bar on the left of the canvas (one button for each node type in the vocabulary, and one for a node without a type: drag it onto the canvas, or click it to add the node in the middle of the view), and click **Publish** to save a version. The app shows only the nodes of the open graph.

@@ -14,8 +14,9 @@ export const EMPTY_HISTORY: History = { entries: [], index: 0, tip: null };
 // The most changes that the history keeps.
 const LIMIT = 200;
 
+// The parent of each node is part of the state, so an undo puts a node back into the node that held it.
 export const snapshotOf = (draft: GraphView): DraftState => ({
-  content: toContent(draft),
+  content: (({ nodes, ...rest }) => ({ ...rest, nodes: nodes.map((node, index) => ({ ...node, parentId: draft.nodes[index]?.parentId ?? null })) }))(toContent(draft)),
   routes: Object.fromEntries(draft.edges.flatMap(({ id, route }) => (route == null ? [] : [[id, route]]))),
 });
 

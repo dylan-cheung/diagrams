@@ -2100,3 +2100,185 @@ button.link.broken {
     display: none;
   }
 }
+
+/* Libraries: the palette has one part for each library that the graph uses. */
+.palette {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.palette-part {
+  display: grid;
+  gap: 8px;
+}
+
+.palette-divider {
+  display: block;
+  height: 1px;
+  margin: 0 4px;
+  background: var(--line);
+}
+
+.palette-item.second-tier {
+  border-style: dashed;
+}
+
+/* A node that holds other nodes is a box around them, with its type and name at the top. Its body lets the edges
+   under it show. */
+.entity.container {
+  align-content: start;
+  background: color-mix(in srgb, var(--type-color, var(--muted)) 6%, transparent);
+  border-width: 1px 1px 1px 4px;
+  border-color: color-mix(in srgb, var(--type-color, var(--muted)) 55%, var(--line));
+  border-left-color: var(--type-color, var(--line));
+}
+
+.entity.container .entity-name {
+  font-size: 14px;
+}
+
+:is(.entity, .palette-item).type-skill,
+:is(.entity, .palette-item).type-domain {
+  --type-color: var(--type-service);
+}
+
+:is(.entity, .palette-item).type-plugin,
+:is(.entity, .palette-item).type-service-layer {
+  --type-color: var(--type-module);
+}
+
+:is(.entity, .palette-item).type-memory-file,
+:is(.entity, .palette-item).type-repository-layer {
+  --type-color: var(--type-database);
+}
+
+:is(.entity, .palette-item).type-session,
+:is(.entity, .palette-item).type-controller-layer {
+  --type-color: var(--type-ui);
+}
+
+:is(.entity, .palette-item).type-agent {
+  --type-color: var(--group-orange);
+}
+
+:is(.entity, .palette-item).type-settings-file {
+  --type-color: var(--type-external);
+}
+
+:is(.entity, .palette-item).type-slash-command {
+  --type-color: var(--group-green);
+}
+
+:is(.entity, .palette-item).type-hook {
+  --type-color: var(--group-pink);
+}
+
+:is(.entity, .palette-item).type-mcp-server {
+  --type-color: var(--group-cyan);
+}
+
+:is(.entity, .palette-item).type-output-style {
+  --type-color: var(--group-purple);
+}
+
+:is(.entity, .palette-item).type-concept {
+  --type-color: var(--type-decision);
+}
+
+/* The page of one library. */
+.library-page {
+  display: grid;
+  gap: 0;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 8px 16px 32px;
+}
+
+.library-block {
+  display: grid;
+  gap: 10px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.library-block h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.library-block p {
+  margin: 0;
+}
+
+.library-head {
+  max-width: 640px;
+}
+
+.term-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.term-table th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 4px 6px;
+}
+
+.term-table td {
+  padding: 4px 6px;
+  vertical-align: top;
+  border-top: 1px solid var(--line);
+}
+
+.term-table td:nth-child(1) {
+  width: 16%;
+}
+
+.term-table td:nth-child(2) {
+  width: 18%;
+}
+
+.term-table input,
+.term-table textarea,
+.term-table select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.term-table td.actions {
+  width: 1%;
+}
+
+.mono-input {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.within {
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+}
+
+.within-options {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.library-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.library-choice {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}

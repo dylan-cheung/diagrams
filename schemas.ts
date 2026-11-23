@@ -38,20 +38,75 @@ const uniqueIds = (terms: { id: string }[]) => new Set(terms.map(({ id }) => id)
 const Terms = (name: string) =>
   z.array(Term).refine(uniqueIds, { error: `Each ${name} needs a different id.` });
 
+export const NodeTypeTerm = Term.extend({
+  within: z
+    .array(TypeId)
+    .default([])
+    .openapi({
+      description:
+        "The node types that can hold a node of this type. Empty for a first-tier type. A second-tier type (for example concept) lists first-tier types of its library, and each node of it must be within a node of one of them.",
+      example: [],
+    }),
+}).openapi("NodeTypeTerm");
+
 export const Vocabulary = z
   .object({
-    nodeTypes: Terms("node type").openapi({ description: "The semantic types a node can have." }),
+    nodeTypes: z
+      .array(NodeTypeTerm)
+      .refine(uniqueIds, { error: "Each node type needs a different id." })
+      .openapi({ description: "The semantic types a node can have." }),
     relationshipTypes: Terms("relationship type").openapi({ description: "The semantic types an edge can have." }),
     statuses: Terms("lifecycle status").openapi({ description: "The lifecycle statuses a node or an edge can have." }),
   })
   .openapi("Vocabulary");
 
-const NodeType = z.string().nullable().openapi({ description: "A node type id from GET /api/vocabulary, or null for no type.", example: "service" });
+const LibraryId = TypeId.openapi({ example: "claude-code" });
+
+const LibraryFields = {
+  name: z.string().trim().min(1, { error: "A library needs a name." }).openapi({ example: "Claude Code" }),
+  description: z.string().openapi({ example: "The parts of a Claude Code setup: skills, plugins, agents and memory files." }),
+  nodeTypes: z
+    .array(NodeTypeTerm)
+    .refine(uniqueIds, { error: "Each node type needs a different id." })
+    .openapi({ description: "The node types of the library. Each id is unique across all libraries." }),
+  relationshipTypes: Terms("relationship type").openapi({ description: "The edge types of the library. Each id is unique across all libraries." }),
+};
+
+export const Library = z
+  .object({
+    id: LibraryId,
+    ...LibraryFields,
+    builtIn: z.boolean().openapi({ description: "True for the General library: every graph has it, and it cannot change." }),
+    createdAt: Timestamp,
+    updatedAt: Timestamp,
+  })
+  .openapi("Library", {
+    description:
+      "A set of node types and relationship types that a graph can use. A graph enables libraries, and its nodes and edges can use only the types of those libraries. The General library (the node and the edge without a type) is always on.",
+  });
+
+export const LibraryInput = z
+  .object({
+    id: LibraryId.optional().openapi({ description: "The id of the new library. Without it, the id comes from the name." }),
+    name: LibraryFields.name,
+    description: LibraryFields.description.optional(),
+    nodeTypes: LibraryFields.nodeTypes.optional(),
+    relationshipTypes: LibraryFields.relationshipTypes.optional(),
+  })
+  .openapi("LibraryInput");
+
+export const LibraryPatch = LibraryInput.omit({ id: true }).partial().openapi("LibraryPatch");
+
+const LibraryIds = z
+  .array(LibraryId)
+  .openapi({ description: "The libraries the graph uses. general is always one of them.", example: ["general", "claude-code"] });
+
+const NodeType = z.string().nullable().openapi({ description: "A node type id from a library the graph uses (GET /api/vocabulary?graphId=), or null for no type.", example: "service" });
 
 const RelationshipType = z
   .string()
   .nullable()
-  .openapi({ description: "A relationship type id from GET /api/vocabulary, or null for no type.", example: "calls" });
+  .openapi({ description: "A relationship type id from a library the graph uses (GET /api/vocabulary?graphId=), or null for no type.", example: "calls" });
 
 const Status = z.string().nullable().openapi({ description: "A lifecycle status id from GET /api/vocabulary, or null for no status.", example: "active" });
 
@@ -103,6 +158,7 @@ export const Graph = z
     name: z.string().openapi({ example: "people" }),
     description: z.string().openapi({ example: "Who works with whom on the payments team." }),
     direction: LayoutDirection,
+    libraryIds: LibraryIds,
     createdAt: Timestamp,
     updatedAt: Timestamp,
   })
@@ -119,6 +175,7 @@ export const GraphSummary = Graph.extend({
 export const PlacedNode = Node.extend({
   position: Position.nullable(),
   groupId: Id.nullable().openapi({ description: "The group of the node in this graph, or null when it is in no group." }),
+  parentId: Id.nullable().openapi({ description: "The node that holds this node in this graph, or null. Only a node of a second-tier type has one." }),
 }).openapi("PlacedNode");
 
 export const Group = z
@@ -199,13 +256,24 @@ export const NodeInput = z
 
 export const NodePatch = NodeInput.partial().openapi("NodePatch");
 
+const ParentId = z
+  .string()
+  .min(1)
+  .nullable()
+  .optional()
+  .openapi({ description: "The id of the node of this graph that holds this node. A node of a second-tier type (for example concept) needs one, of a type in its within list." });
+
 export const NodeInGraphInput = NodeInput.extend({
   position: Position.nullable().optional(),
   groupId: z.string().min(1).nullable().optional().openapi({ description: "The id of a group of this graph to put the node in." }),
+  parentId: ParentId,
 }).openapi("NodeInGraphInput");
 
 export const NodeInGraphPatch = z
-  .object({ groupId: z.string().min(1).nullable().openapi({ description: "The id of a group of this graph, or null to take the node out of its group." }) })
+  .object({
+    groupId: z.string().min(1).nullable().optional().openapi({ description: "The id of a group of this graph, or null to take the node out of its group." }),
+    parentId: ParentId,
+  })
   .openapi("NodeInGraphPatch");
 
 export const GroupInput = z
@@ -242,6 +310,7 @@ export const GraphInput = z
   .object({
     name: Name("A graph needs a name."),
     description: Name("A graph needs a description of its purpose.").openapi({ example: "Who works with whom on the payments team." }),
+    libraryIds: LibraryIds.optional().openapi({ description: "The libraries the graph uses. general is always added. The default is general only." }),
   })
   .openapi("GraphInput");
 
@@ -333,6 +402,7 @@ export const ContentNode = z
     labels: Labels,
     properties: Metadata,
     position: Position.nullable(),
+    parentId: Id.nullable().optional().openapi({ description: "In a draft state only: the node that holds this node. Proposals do not set it." }),
   })
   .openapi("ContentNode");
 
@@ -468,7 +538,7 @@ export const ApplyInput = z
 
 export const ApplyResult = z.object({ proposal: Proposal, version: GraphVersion.nullable() }).openapi("ApplyResult");
 
-export const PlaceNodeInput = z.object({ position: Position.nullable().optional() }).openapi("PlaceNodeInput");
+export const PlaceNodeInput = z.object({ position: Position.nullable().optional(), parentId: ParentId }).openapi("PlaceNodeInput");
 
 export const Positions = z.record(z.string(), Position).openapi("Positions", {
   example: { "6343537c-28f9-4dd8-943d-ef9abfb1fddf": { x: 40, y: 120 } },
@@ -602,7 +672,11 @@ export type PropertyValue = z.infer<typeof PropertyValue>;
 export type Properties = z.infer<typeof Properties>;
 export type Position = z.infer<typeof Position>;
 export type Vocabulary = z.infer<typeof Vocabulary>;
-export type Term = Vocabulary["nodeTypes"][number];
+export type Term = z.infer<typeof Term>;
+export type NodeTypeTerm = z.infer<typeof NodeTypeTerm>;
+export type Library = z.infer<typeof Library>;
+export type LibraryInput = z.infer<typeof LibraryInput>;
+export type LibraryPatch = z.infer<typeof LibraryPatch>;
 export type GraphNode = z.infer<typeof Node>;
 export type GraphEdge = z.infer<typeof Edge>;
 export type Graph = z.infer<typeof Graph>;

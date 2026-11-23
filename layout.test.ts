@@ -40,3 +40,32 @@ describe("auto layout", () => {
     expect(["a", "b", "e"].some((id) => inside(id, two))).toBe(false);
   });
 });
+
+describe("auto layout with nodes within nodes", () => {
+  test("places the nodes within a node inside its box, and keeps other nodes out", async () => {
+    const nodes = [
+      { id: "domain", position: null },
+      { id: "controller", position: null, parentId: "domain" },
+      { id: "service", position: null, parentId: "domain" },
+      { id: "other", position: null },
+    ];
+    const edges = [
+      { id: "cs", source: "controller", target: "service" },
+      { id: "do", source: "domain", target: "other" },
+    ];
+    const { positions, routes } = await autoLayout(nodes, edges, false, "horizontal");
+    expect(Object.keys(routes).sort()).toEqual(["cs", "do"]);
+    const at = (id: string) => positions[id] as Position;
+    for (const id of ["controller", "service"]) {
+      expect(at(id).x).toBeGreaterThan(at("domain").x);
+      expect(at(id).y).toBeGreaterThan(at("domain").y);
+    }
+    const right = Math.max(at("controller").x, at("service").x) + NODE_WIDTH;
+    const bottom = Math.max(at("controller").y, at("service").y) + NODE_HEIGHT;
+    // The route of an edge inside the box is in the coordinates of the canvas, as the positions are.
+    const start = routes.cs?.[0];
+    expect(start?.x).toBe(at("controller").x + NODE_WIDTH);
+    const other = at("other");
+    expect(other.x >= right || other.y >= bottom || other.x + NODE_WIDTH <= at("domain").x).toBe(true);
+  });
+});

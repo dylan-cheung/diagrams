@@ -40,7 +40,7 @@ describe("MCP server", () => {
   });
 
   test("builds a graph through the tools, and returns API errors as tool errors", async () => {
-    const graph = JSON.parse((await call("create_graph", { name: "From Claude", description: "Made through MCP." })).text);
+    const graph = JSON.parse((await call("create_graph", { name: "From Claude", description: "Made through MCP.", libraryIds: ["systems"] })).text);
     const a = JSON.parse((await call("add_node", { graphId: graph.id, name: "A", type: "service" })).text);
     const b = JSON.parse((await call("add_node", { graphId: graph.id, name: "B" })).text);
     await call("add_edge", { graphId: graph.id, source: a.id, target: b.id, type: "calls" });

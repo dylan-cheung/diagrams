@@ -51,6 +51,10 @@ export type {
   RunEvent,
   RunInput,
   Term,
+  NodeTypeTerm,
+  Library,
+  LibraryInput,
+  LibraryPatch,
   Vocabulary,
 } from "./schemas.ts";
 

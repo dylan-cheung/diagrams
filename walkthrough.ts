@@ -1,3 +1,4 @@
+import { SYSTEMS_LIBRARY } from "./libraries.ts";
 import type { GraphStore } from "./db.ts";
 import type { EdgeInput, NodeInput, Position, Properties } from "./model.ts";
 import LAYOUT from "./walkthrough-layout.json";
@@ -271,7 +272,7 @@ export const WALKTHROUGH_EDGES = EDGES;
 export const ensureWalkthrough = (store: GraphStore) => {
   if (store.listGraphs().some(({ id }) => id === WALKTHROUGH_ID)) return false;
   const layout = LAYOUT as SavedLayout;
-  store.createGraph(GRAPH, WALKTHROUGH_ID);
+  store.createGraph({ ...GRAPH, libraryIds: [SYSTEMS_LIBRARY.id] }, WALKTHROUGH_ID);
   store.updateGraph(WALKTHROUGH_ID, { direction: "vertical" });
   const ids = new Map<string, string>();
   for (const { key, ...input } of NODES) ids.set(key, store.createNodeInGraph(WALKTHROUGH_ID, input, layout.positions[key] ?? null).id);

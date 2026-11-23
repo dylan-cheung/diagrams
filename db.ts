@@ -47,9 +47,14 @@ import {
   type Run,
   type RunEvent,
   type RunInput,
+  type Library,
+  type LibraryInput,
+  type LibraryPatch,
+  type NodeTypeTerm,
   type Vocabulary,
 } from "./model.ts";
-import { DEFAULT_VOCABULARY, edgeDesignErrors, nodeDesignErrors } from "./vocabulary.ts";
+import { GENERAL_LIBRARY, GENERAL_LIBRARY_ID, SEED_LIBRARIES, SYSTEMS_LIBRARY } from "./libraries.ts";
+import { edgeDesignErrors, nodeDesignErrors, vocabularyOf } from "./vocabulary.ts";
 
 type NodeRow = {
   id: string;
@@ -100,7 +105,27 @@ type RunRow = {
   updated_at: string;
 };
 
-type PlacedNodeRow = NodeRow & { x: number | null; y: number | null; group_id: string | null };
+type PlacedNodeRow = NodeRow & { x: number | null; y: number | null; group_id: string | null; parent_id: string | null };
+
+type LibraryRow = { id: string; name: string; description: string; node_types: string; relationship_types: string; created_at: string; updated_at: string };
+
+const toLibrary = (row: LibraryRow): Library => ({
+  id: row.id,
+  name: row.name,
+  description: row.description,
+  nodeTypes: JSON.parse(row.node_types) as NodeTypeTerm[],
+  relationshipTypes: JSON.parse(row.relationship_types) as Library["relationshipTypes"],
+  builtIn: row.id === GENERAL_LIBRARY_ID,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const slug = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/^(?![a-z])/, "library-");
 
 type GroupRow = { id: string; graph_id: string; name: string; description: string; color: string | null; created_at: string; updated_at: string };
 
@@ -164,11 +189,12 @@ const toEdge = (row: EdgeRow): GraphEdge => ({
   updatedAt: row.updated_at,
 });
 
-const toGraph = (row: GraphRow): Graph => ({
+const toGraph = (row: GraphRow, libraryIds: string[]): Graph => ({
   id: row.id,
   name: row.name,
   description: row.description,
   direction: row.direction,
+  libraryIds,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -291,6 +317,9 @@ export const contentHash = ({ graph, nodes, edges, flows, groups }: GraphView) =
         ...(flows.length > 0 && { flows: byId(flows).map((f) => [f.id, f.name, f.description, f.steps.map((step) => [step.nodeId, step.edgeId])]) }),
         ...(groups.length > 0 && {
           groups: byId(groups).map((g) => [g.id, g.name, g.description, byId(nodes.filter((n) => n.groupId === g.id)).map((n) => n.id)]),
+        }),
+        ...(nodes.some((n) => n.parentId != null) && {
+          parents: byId(nodes.filter((n) => n.parentId != null)).map((n) => [n.id, n.parentId]),
         }),
       }),
     )
@@ -425,6 +454,20 @@ CREATE TABLE IF NOT EXISTS change_feedback (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS change_feedback_change ON change_feedback(change_id);
+CREATE TABLE IF NOT EXISTS libraries (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  node_types TEXT NOT NULL DEFAULT '[]',
+  relationship_types TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS graph_libraries (
+  graph_id TEXT NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
+  library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+  PRIMARY KEY (graph_id, library_id)
+);
 `;
 
 const ADDED_COLUMNS: [string, string, string][] = [
@@ -441,13 +484,15 @@ const ADDED_COLUMNS: [string, string, string][] = [
   ["graph_edges", "route", "TEXT"],
   ["node_groups", "color", "TEXT"],
   ["graph_nodes", "group_id", "TEXT REFERENCES node_groups(id) ON DELETE SET NULL"],
+  ["graph_nodes", "parent_id", "TEXT"],
 ];
 
-export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VOCABULARY) => {
+export const openGraphStore = (path: string) => {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true, strict: true });
   db.run("PRAGMA journal_mode = WAL");
   db.run("PRAGMA foreign_keys = ON");
+  const hadLibraries = db.query<{ found: number }, []>("SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = 'libraries'").get() != null;
   db.exec(SCHEMA);
   for (const [table, column, definition] of ADDED_COLUMNS) {
     const columns = db.query<{ name: string }, []>(`PRAGMA table_info(${table})`).all();
@@ -457,6 +502,35 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
   db.run("DELETE FROM nodes WHERE id NOT IN (SELECT node_id FROM graph_nodes)");
 
   const now = () => new Date().toISOString();
+
+  const insertLibrary = db.query(
+    `INSERT OR IGNORE INTO libraries (id, name, description, node_types, relationship_types, created_at, updated_at)
+     VALUES ($id, $name, $description, $nodeTypes, $relationshipTypes, $stamp, $stamp)`,
+  );
+  const seedLibrary = (library: Required<LibraryInput>) =>
+    insertLibrary.run({
+      id: library.id,
+      name: library.name,
+      description: library.description,
+      nodeTypes: JSON.stringify(library.nodeTypes),
+      relationshipTypes: JSON.stringify(library.relationshipTypes),
+      stamp: now(),
+    });
+  if (!hadLibraries) {
+    for (const library of SEED_LIBRARIES) seedLibrary(library);
+    db.run(`INSERT OR IGNORE INTO graph_libraries (graph_id, library_id) SELECT id, '${SYSTEMS_LIBRARY.id}' FROM graphs`);
+  }
+  seedLibrary(GENERAL_LIBRARY);
+
+  const libraryById = db.query<LibraryRow, { id: string }>("SELECT * FROM libraries WHERE id = $id");
+  const allLibraries = () => db.query<LibraryRow, []>("SELECT * FROM libraries ORDER BY id = 'general' DESC, name COLLATE NOCASE").all().map(toLibrary);
+  const libraryIdsOf = db.query<{ library_id: string }, { graphId: string }>("SELECT library_id FROM graph_libraries WHERE graph_id = $graphId");
+  const enabledIds = (graphId: string) => [GENERAL_LIBRARY_ID, ...libraryIdsOf.all({ graphId }).map(({ library_id }) => library_id).filter((id) => id !== GENERAL_LIBRARY_ID)];
+  const vocabulary = () => vocabularyOf(allLibraries());
+  const graphVocabulary = (graphId: string) => {
+    const ids = new Set(enabledIds(graphId));
+    return vocabularyOf(allLibraries().filter(({ id }) => ids.has(id)));
+  };
 
   const nodeById = db.query<NodeRow, { id: string }>("SELECT * FROM nodes WHERE id = $id");
   const edgeById = db.query<EdgeRow, { id: string }>("SELECT * FROM edges WHERE id = $id");
@@ -480,7 +554,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
   const requireGraph = (id: string) => {
     const row = graphById.get({ id });
     if (row == null) throw new StoreError("The graph does not exist.", 404);
-    return toGraph(row);
+    return toGraph(row, enabledIds(id));
   };
 
   const uniqueName = <T>(action: () => T) => {
@@ -498,6 +572,66 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     if (errors.length > 0) throw new StoreError(errors.join(" "), 400);
   };
 
+  // A graph can use only the types of its libraries. The error names the library that has the type, so the client can
+  // turn it on.
+  const graphDesignErrors = (graphId: string, kind: "node" | "edge", design: { type?: string | null; status?: string | null }) => {
+    const errors = kind === "node" ? nodeDesignErrors(vocabulary(), design) : edgeDesignErrors(vocabulary(), design);
+    if (errors.length > 0 || design.type == null) return errors;
+    const terms = (vocabulary: Vocabulary) => (kind === "node" ? vocabulary.nodeTypes : vocabulary.relationshipTypes);
+    if (terms(graphVocabulary(graphId)).some(({ id }) => id === design.type)) return [];
+    const owner = allLibraries().find((library) => terms(vocabularyOf([library])).some(({ id }) => id === design.type));
+    const graph = graphById.get({ id: graphId });
+    return [
+      `The ${kind === "node" ? "node type" : "relationship type"} ${design.type} is in the library ${owner?.name ?? "?"}, and the graph ${graph?.name ?? graphId} does not use that library. Turn on the library ${owner?.id ?? "?"} for the graph first (libraryIds).`,
+    ];
+  };
+
+  const nodeTypeTerm = (type: string | null) => (type == null ? undefined : vocabulary().nodeTypes.find(({ id }) => id === type));
+
+  const parentRow = db.query<{ parent_id: string | null }, { graphId: string; nodeId: string }>(
+    "SELECT parent_id FROM graph_nodes WHERE graph_id = $graphId AND node_id = $nodeId",
+  );
+  const childrenOf = db.query<{ node_id: string }, { graphId: string; nodeId: string }>(
+    "SELECT node_id FROM graph_nodes WHERE graph_id = $graphId AND parent_id = $nodeId",
+  );
+
+  // A node of a second-tier type is within one node of a type in its within list. Other nodes are within no node. The
+  // types in a within list are first-tier types, so a parent never has a parent itself.
+  const checkParent = (graphId: string, nodeId: string | null, type: string | null, parentId: string | null) => {
+    const term = nodeTypeTerm(type);
+    const within = term?.within ?? [];
+    const name = term?.name ?? "no type";
+    if (parentId == null) {
+      if (within.length > 0) {
+        throw new StoreError(`A node of the type ${name} must be within a node of one of these types: ${within.join(", ")}. Give its parentId.`, 400);
+      }
+      return;
+    }
+    if (parentId === nodeId) throw new StoreError("A node cannot be within itself.", 400);
+    if (membership.get({ graphId, nodeId: parentId }) == null) throw new StoreError(`The parent node ${parentId} is not in the graph.`, 400);
+    const parentType = requireNode(parentId).type;
+    if (within.length === 0) throw new StoreError(`A node of the type ${name} cannot be within another node. Only a second-tier type, such as a concept, can.`, 400);
+    if (parentType == null || !within.includes(parentType)) {
+      throw new StoreError(`A node of the type ${name} can be within a node of one of these types only: ${within.join(", ")}.`, 400);
+    }
+  };
+
+  // A node that holds other nodes keeps a type that each of them can be within.
+  const checkChildren = (graphId: string, nodeId: string, type: string | null) => {
+    for (const { node_id } of childrenOf.all({ graphId, nodeId })) {
+      const child = requireNode(node_id);
+      const within = nodeTypeTerm(child.type)?.within ?? [];
+      if (type == null || !within.includes(type)) {
+        throw new StoreError(`The node holds "${child.name}", which cannot be within a node of the type ${type ?? "no type"}.`, 400);
+      }
+    }
+  };
+
+  const setParent = db.query("UPDATE graph_nodes SET parent_id = $parentId WHERE graph_id = $graphId AND node_id = $nodeId");
+
+  const graphsOfNode = db.query<{ graph_id: string }, { nodeId: string }>("SELECT graph_id FROM graph_nodes WHERE node_id = $nodeId");
+  const graphsOfEdge = db.query<{ graph_id: string }, { edgeId: string }>("SELECT graph_id FROM graph_edges WHERE edge_id = $edgeId");
+
   const touchGraph = (graphId: string) =>
     db.query("UPDATE graphs SET updated_at = $now WHERE id = $graphId").run({ graphId, now: now() });
 
@@ -514,7 +648,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       .run({ graphId, nodeId });
 
   const createNode = (input: NodeInput, id: string = crypto.randomUUID()) => {
-    checkDesign(nodeDesignErrors(vocabulary, input));
+    checkDesign(nodeDesignErrors(vocabulary(), input));
     const stamp = now();
     db.query(
       `INSERT INTO nodes (id, name, description, type, intent, status, labels, properties, created_at, updated_at)
@@ -535,7 +669,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
 
   const updateNode = (id: string, input: Partial<NodeInput>) => {
     const node = requireNode(id);
-    checkDesign(nodeDesignErrors(vocabulary, input));
+    checkDesign(nodeDesignErrors(vocabulary(), input));
     db.query(
       `UPDATE nodes SET name = $name, description = $description, type = $type, intent = $intent, status = $status,
        labels = $labels, properties = $properties, updated_at = $now WHERE id = $id`,
@@ -556,7 +690,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
   const createEdge = (input: EdgeInput, id: string = crypto.randomUUID()) => {
     requireNode(input.source);
     requireNode(input.target);
-    checkDesign(edgeDesignErrors(vocabulary, input));
+    checkDesign(edgeDesignErrors(vocabulary(), input));
     const stamp = now();
     db.query(
       `INSERT INTO edges (id, source, target, directed, type, label, description, intent, status, properties, created_at, updated_at)
@@ -581,7 +715,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     const edge = requireEdge(id);
     if (input.source !== undefined) requireNode(input.source);
     if (input.target !== undefined) requireNode(input.target);
-    checkDesign(edgeDesignErrors(vocabulary, input));
+    checkDesign(edgeDesignErrors(vocabulary(), input));
     db.query(
       `UPDATE edges SET source = $source, target = $target, directed = $directed, type = $type, label = $label, description = $description,
        intent = $intent, status = $status, properties = $properties, updated_at = $now WHERE id = $id`,
@@ -654,7 +788,8 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     dropOrphanEdge(edgeId);
   };
 
-  const detachNode = (graphId: string, nodeId: string) => {
+  const detachNode = (graphId: string, nodeId: string): void => {
+    for (const { node_id } of childrenOf.all({ graphId, nodeId })) detachNode(graphId, node_id);
     const edgeIds = db
       .query<{ id: string }, { graphId: string; nodeId: string }>(
         "SELECT e.id FROM graph_edges ge JOIN edges e ON e.id = ge.edge_id WHERE ge.graph_id = $graphId AND (e.source = $nodeId OR e.target = $nodeId)",
@@ -674,10 +809,15 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     const graph = requireGraph(graphId);
     const nodes = db
       .query<PlacedNodeRow, { graphId: string }>(
-        "SELECT n.*, gn.x, gn.y, gn.group_id FROM graph_nodes gn JOIN nodes n ON n.id = gn.node_id WHERE gn.graph_id = $graphId ORDER BY n.created_at, n.rowid",
+        "SELECT n.*, gn.x, gn.y, gn.group_id, gn.parent_id FROM graph_nodes gn JOIN nodes n ON n.id = gn.node_id WHERE gn.graph_id = $graphId ORDER BY n.created_at, n.rowid",
       )
       .all({ graphId })
-      .map((row) => ({ ...toNode(row), position: row.x == null || row.y == null ? null : { x: row.x, y: row.y }, groupId: row.group_id }));
+      .map((row) => ({
+        ...toNode(row),
+        position: row.x == null || row.y == null ? null : { x: row.x, y: row.y },
+        groupId: row.group_id,
+        parentId: row.parent_id,
+      }));
     const edges = db
       .query<EdgeRow & { route: string | null }, { graphId: string }>(
         "SELECT e.*, ge.route FROM graph_edges ge JOIN edges e ON e.id = ge.edge_id WHERE ge.graph_id = $graphId ORDER BY e.created_at, e.rowid",
@@ -737,7 +877,8 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       ...toVersionSummary(row),
       view: {
         ...snapshot,
-        nodes: snapshot.nodes.map((node) => ({ ...NODE_DESIGN_DEFAULTS, ...node, groupId: node.groupId ?? null })),
+        graph: { ...snapshot.graph, libraryIds: snapshot.graph.libraryIds ?? [GENERAL_LIBRARY_ID] },
+        nodes: snapshot.nodes.map((node) => ({ ...NODE_DESIGN_DEFAULTS, ...node, groupId: node.groupId ?? null, parentId: node.parentId ?? null })),
         edges: snapshot.edges.map((edge) => ({ ...EDGE_DESIGN_DEFAULTS, ...edge, route: edge.route ?? null })),
         flows: snapshot.flows ?? [],
         groups: (snapshot.groups ?? []).map((group) => ({ ...group, color: group.color ?? null })),
@@ -806,7 +947,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       const existing = row == null ? null : toNode(row);
       const name = proposed.name ?? existing?.name;
       if (name == null) throw new StoreError(`The new node ${proposed.id} needs a name.`, 400);
-      checkDesign(nodeDesignErrors(vocabulary, proposed).map((error) => `${proposed.id}: ${error}`));
+      checkDesign(graphDesignErrors(graphId, "node", proposed).map((error) => `${proposed.id}: ${error}`));
       return {
         id: proposed.id,
         name,
@@ -831,7 +972,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       if (!nodeIds.has(source) || !nodeIds.has(target)) {
         throw new StoreError(`The edge ${proposed.id} connects a node that is not in the proposal.`, 400);
       }
-      checkDesign(edgeDesignErrors(vocabulary, proposed).map((error) => `${proposed.id}: ${error}`));
+      checkDesign(graphDesignErrors(graphId, "edge", proposed).map((error) => `${proposed.id}: ${error}`));
       return {
         id: proposed.id,
         source,
@@ -919,7 +1060,15 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       nodeIds.set(node.id, id);
       placeNode(graphId, id, node.position, false);
     }
+    for (const node of nodes) {
+      if (node.parentId !== undefined) setParent.run({ graphId, nodeId: nodeIds.get(node.id) ?? node.id, parentId: node.parentId == null ? null : (nodeIds.get(node.parentId) ?? node.parentId) });
+    }
     const keptNodes = new Set(nodeIds.values());
+    for (const node of current.nodes) {
+      if (!keptNodes.has(node.id)) {
+        db.query("UPDATE graph_nodes SET parent_id = NULL WHERE graph_id = $graphId AND parent_id = $nodeId").run({ graphId, nodeId: node.id });
+      }
+    }
     for (const node of current.nodes) if (!keptNodes.has(node.id)) detachNode(graphId, node.id);
     const appliedEdges = edges.map((edge) => {
       const input = { ...edge, source: nodeIds.get(edge.source) ?? edge.source, target: nodeIds.get(edge.target) ?? edge.target };
@@ -1180,12 +1329,99 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     return { against: base.version, diff: diffGraphs(toContent(base.view), proposal.content) };
   };
 
+  const requireLibrary = (id: string) => {
+    const row = libraryById.get({ id });
+    if (row == null) throw new StoreError(`The library ${id} does not exist.`, 404);
+    return toLibrary(row);
+  };
+
+  // A type id is unique across all libraries, so a node or an edge type names one library. A within list names first-tier
+  // types of the same library.
+  const checkLibrary = (id: string, nodeTypes: NodeTypeTerm[], relationshipTypes: Library["relationshipTypes"]) => {
+    const others = allLibraries().filter((library) => library.id !== id);
+    const kinds = [
+      ["node type", nodeTypes, others.flatMap((library) => library.nodeTypes.map((term) => ({ term, library })))],
+      ["relationship type", relationshipTypes, others.flatMap((library) => library.relationshipTypes.map((term) => ({ term, library })))],
+    ] as const;
+    for (const [kind, terms, otherTerms] of kinds) {
+      for (const term of terms) {
+        const taken = otherTerms.find((other) => other.term.id === term.id);
+        if (taken != null) throw new StoreError(`The ${kind} id ${term.id} is already in the library ${taken.library.name}. Use another id.`, 409);
+      }
+    }
+    const firstTier = new Set(nodeTypes.filter(({ within }) => within.length === 0).map(({ id: typeId }) => typeId));
+    for (const term of nodeTypes) {
+      const wrong = term.within.filter((typeId) => !firstTier.has(typeId));
+      if (wrong.length > 0) {
+        throw new StoreError(`The node type ${term.id} can be within first-tier types of this library only, and ${wrong.join(", ")} is not one.`, 400);
+      }
+    }
+  };
+
+  const saveLibrary = (id: string, input: Partial<LibraryInput>, before: Library | null) => {
+    const nodeTypes = (input.nodeTypes ?? before?.nodeTypes ?? []).map((term) => ({ ...term, name: term.name.trim(), description: term.description.trim(), within: term.within ?? [] }));
+    const relationshipTypes = (input.relationshipTypes ?? before?.relationshipTypes ?? []).map((term) => ({ ...term, name: term.name.trim(), description: term.description.trim() }));
+    checkLibrary(id, nodeTypes, relationshipTypes);
+    const stamp = now();
+    db.query(
+      `INSERT INTO libraries (id, name, description, node_types, relationship_types, created_at, updated_at)
+       VALUES ($id, $name, $description, $nodeTypes, $relationshipTypes, $stamp, $stamp)
+       ON CONFLICT(id) DO UPDATE SET name = $name, description = $description, node_types = $nodeTypes, relationship_types = $relationshipTypes, updated_at = $stamp`,
+    ).run({
+      id,
+      name: input.name?.trim() ?? before?.name ?? "",
+      description: input.description?.trim() ?? before?.description ?? "",
+      nodeTypes: JSON.stringify(nodeTypes),
+      relationshipTypes: JSON.stringify(relationshipTypes),
+      stamp,
+    });
+    return requireLibrary(id);
+  };
+
+  const setLibraries = (graphId: string, libraryIds: string[]) => {
+    for (const id of libraryIds) requireLibrary(id);
+    db.query("DELETE FROM graph_libraries WHERE graph_id = $graphId").run({ graphId });
+    const add = db.query("INSERT OR IGNORE INTO graph_libraries (graph_id, library_id) VALUES ($graphId, $libraryId)");
+    for (const libraryId of new Set([GENERAL_LIBRARY_ID, ...libraryIds])) add.run({ graphId, libraryId });
+  };
+
   return {
-    vocabulary: () => vocabulary,
+    vocabulary: (graphId?: string) => {
+      if (graphId == null) return vocabulary();
+      requireGraph(graphId);
+      return graphVocabulary(graphId);
+    },
+
+    listLibraries: allLibraries,
+    getLibrary: requireLibrary,
+    createLibrary: db.transaction((input: LibraryInput) => {
+      const id = input.id ?? slug(input.name);
+      if (libraryById.get({ id }) != null) throw new StoreError(`A library with the id ${id} already exists.`, 409);
+      return saveLibrary(id, input, null);
+    }),
+    updateLibrary: db.transaction((id: string, input: LibraryPatch) => {
+      const library = requireLibrary(id);
+      if (library.builtIn) throw new StoreError("The General library cannot change.", 409);
+      return saveLibrary(id, input, library);
+    }),
+    deleteLibrary: (id: string) => {
+      const library = requireLibrary(id);
+      if (library.builtIn) throw new StoreError("The General library cannot be deleted.", 409);
+      db.query("DELETE FROM libraries WHERE id = $id").run({ id });
+    },
 
     listNodes: () => db.query<NodeRow, []>("SELECT * FROM nodes ORDER BY name COLLATE NOCASE").all().map(toNode),
     getNode: requireNode,
-    updateNode,
+    updateNode: db.transaction((id: string, input: Partial<NodeInput>) => {
+      if (input.type !== undefined) {
+        for (const { graph_id: graphId } of graphsOfNode.all({ nodeId: id })) {
+          checkDesign(graphDesignErrors(graphId, "node", { type: input.type }));
+          checkParent(graphId, id, input.type, parentRow.get({ graphId, nodeId: id })?.parent_id ?? null);
+          checkChildren(graphId, id, input.type);
+        }
+      }
+      return updateNode(id, input);
+    }),
     deleteNode: (id: string) => {
       requireNode(id);
       db.query("DELETE FROM nodes WHERE id = $id").run({ id });
@@ -1194,6 +1430,9 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     listEdges: () => db.query<EdgeRow, []>("SELECT * FROM edges ORDER BY created_at, rowid").all().map(toEdge),
     getEdge: requireEdge,
     updateEdge: db.transaction((id: string, input: Partial<EdgeInput>) => {
+      if (input.type !== undefined) {
+        for (const { graph_id: graphId } of graphsOfEdge.all({ edgeId: id })) checkDesign(graphDesignErrors(graphId, "edge", { type: input.type }));
+      }
       const edge = updateEdge(id, input);
       if (inAnyGraph.get({ id }) == null) {
         throw new StoreError("The edge would leave every graph. Both nodes must be in a graph that holds the edge.", 400);
@@ -1218,7 +1457,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
         .map((row) => {
           const latest = latestVersion.get({ graphId: row.id });
           return {
-            ...toGraph(row),
+            ...toGraph(row, enabledIds(row.id)),
             nodeCount: row.node_count,
             edgeCount: row.edge_count,
             published: latest?.version ?? null,
@@ -1226,17 +1465,19 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
             openProposals: row.open_proposals,
           };
         }),
-    createGraph: (input: GraphInput, id: string = crypto.randomUUID()) => {
+    createGraph: db.transaction((input: GraphInput, id: string = crypto.randomUUID()) => {
       const stamp = now();
       uniqueName(() =>
         db
           .query("INSERT INTO graphs (id, name, description, created_at, updated_at) VALUES ($id, $name, $description, $stamp, $stamp)")
           .run({ id, name: input.name.trim(), description: input.description.trim(), stamp }),
       );
+      setLibraries(id, input.libraryIds ?? []);
       return requireGraph(id);
-    },
-    updateGraph: (id: string, input: GraphPatch) => {
+    }),
+    updateGraph: db.transaction((id: string, input: GraphPatch) => {
       const graph = requireGraph(id);
+      if (input.libraryIds != null) setLibraries(id, input.libraryIds);
       uniqueName(() =>
         db.query("UPDATE graphs SET name = $name, description = $description, direction = $direction, updated_at = $now WHERE id = $id").run({
           id,
@@ -1247,7 +1488,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
         }),
       );
       return requireGraph(id);
-    },
+    }),
     deleteGraph: db.transaction((id: string) => {
       requireGraph(id);
       const nodeIds = graphPositions.all({ graphId: id }).map(({ node_id }) => node_id);
@@ -1268,8 +1509,13 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
         .map(toVersionSummary),
     getVersion,
 
-    addNodeToGraph: db.transaction((graphId: string, nodeId: string, position: Position | null) => {
+    addNodeToGraph: db.transaction((graphId: string, nodeId: string, position: Position | null, parentId: string | null = null) => {
+      requireGraph(graphId);
+      const node = requireNode(nodeId);
+      checkDesign(graphDesignErrors(graphId, "node", node));
+      checkParent(graphId, nodeId, node.type, parentId);
       placeNode(graphId, nodeId, position, true);
+      setParent.run({ graphId, nodeId, parentId });
       return view(graphId);
     }),
     moveNodes: db.transaction((graphId: string, positions: Record<string, Position>) => {
@@ -1291,17 +1537,27 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       detachNode(graphId, nodeId);
       touchGraph(graphId);
     }),
-    createNodeInGraph: db.transaction((graphId: string, input: NodeInput, position: Position | null, groupId: string | null = null) => {
+    createNodeInGraph: db.transaction(
+      (graphId: string, input: NodeInput, position: Position | null, groupId: string | null = null, parentId: string | null = null) => {
+        requireGraph(graphId);
+        if (groupId != null) requireGroup(graphId, groupId);
+        checkDesign(graphDesignErrors(graphId, "node", input));
+        checkParent(graphId, null, input.type ?? null, parentId);
+        const node = createNode(input);
+        placeNode(graphId, node.id, position, false);
+        if (groupId != null) putInGroup(graphId, node.id, groupId);
+        if (parentId != null) setParent.run({ graphId, nodeId: node.id, parentId });
+        return node;
+      },
+    ),
+    setNodePlacement: db.transaction((graphId: string, nodeId: string, { groupId, parentId }: { groupId?: string | null; parentId?: string | null }) => {
       requireGraph(graphId);
-      if (groupId != null) requireGroup(graphId, groupId);
-      const node = createNode(input);
-      placeNode(graphId, node.id, position, false);
-      if (groupId != null) putInGroup(graphId, node.id, groupId);
-      return node;
-    }),
-    setNodeGroup: db.transaction((graphId: string, nodeId: string, groupId: string | null) => {
-      requireGraph(graphId);
-      putInGroup(graphId, nodeId, groupId);
+      if (membership.get({ graphId, nodeId }) == null) throw new StoreError(`The node ${nodeId} is not in the graph.`, 400);
+      if (groupId !== undefined) putInGroup(graphId, nodeId, groupId);
+      if (parentId !== undefined) {
+        checkParent(graphId, nodeId, requireNode(nodeId).type, parentId);
+        setParent.run({ graphId, nodeId, parentId });
+      }
       touchGraph(graphId);
       return view(graphId);
     }),
@@ -1316,9 +1572,14 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       db.query("DELETE FROM node_groups WHERE id = $groupId").run({ groupId });
       touchGraph(graphId);
     }),
-    addEdgeToGraph: db.transaction((graphId: string, edgeId: string) => includeEdge(graphId, edgeId)),
+    addEdgeToGraph: db.transaction((graphId: string, edgeId: string) => {
+      requireGraph(graphId);
+      checkDesign(graphDesignErrors(graphId, "edge", requireEdge(edgeId)));
+      includeEdge(graphId, edgeId);
+    }),
     createEdgeInGraph: db.transaction((graphId: string, input: EdgeInput) => {
       requireGraph(graphId);
+      checkDesign(graphDesignErrors(graphId, "edge", input));
       const missing = [input.source, input.target].filter((nodeId) => membership.get({ graphId, nodeId }) == null);
       if (missing.length > 0) throw new StoreError("Both nodes of the edge must be in the graph first.", 400);
       const edge = createEdge(input);

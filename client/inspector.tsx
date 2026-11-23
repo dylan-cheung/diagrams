@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { normalizeLabels, type GraphEdge, type GraphInput, type GraphNode, type GraphView } from "../model.ts";
 import { PropertiesField, SelectField, TextAreaField, TextField } from "./fields.tsx";
-import { useVocabulary } from "./vocabulary.ts";
+import { useEnabledVocabulary, useVocabulary } from "./vocabulary.ts";
 
 type NodePatch = Partial<Pick<GraphNode, "name" | "description" | "type" | "intent" | "status" | "labels" | "properties">>;
 
@@ -15,6 +15,7 @@ export type InspectorActions = {
   updateNode: (id: string, patch: NodePatch) => void;
   removeNodeFromGraph: (id: string) => void;
   setNodeGroup: (id: string, groupId: string | null) => void;
+  setNodeParent: (id: string, parentId: string) => void;
   createGroupWith: (nodeId: string, name: string) => void;
   updateEdge: (id: string, patch: EdgePatch) => void;
   removeEdgeFromGraph: (id: string) => void;
@@ -24,8 +25,33 @@ const NEW_GROUP = "new-group";
 
 const nameOf = (view: GraphView, id: string) => view.nodes.find((node) => node.id === id)?.name ?? id;
 
-const NodeInspector = ({ node, view, actions }: { node: GraphNode; view: GraphView; actions: InspectorActions }) => {
+// A node of a second-tier type is within a node of one of the types in its within list. The list offers those nodes.
+const WithinField = ({ node, view, actions }: { node: GraphNode; view: GraphView; actions: InspectorActions }) => {
   const vocabulary = useVocabulary();
+  const within = vocabulary.nodeTypes.find(({ id }) => id === node.type)?.within ?? [];
+  const parentId = view.nodes.find(({ id }) => id === node.id)?.parentId ?? null;
+  const children = view.nodes.filter((item) => item.parentId === node.id);
+  if (within.length === 0) {
+    return children.length === 0 ? null : <p className="hint">Holds {children.length === 1 ? "1 node" : `${children.length} nodes`}: {children.map(({ name }) => name).join(", ")}.</p>;
+  }
+  const options = view.nodes.filter((item) => item.type != null && within.includes(item.type));
+  return (
+    <label className="field">
+      <span>Within</span>
+      <select value={parentId ?? ""} onChange={(e) => e.target.value !== "" && actions.setNodeParent(node.id, e.target.value)}>
+        {parentId == null && <option value="">Pick a node</option>}
+        {options.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+};
+
+const NodeInspector = ({ node, view, actions }: { node: GraphNode; view: GraphView; actions: InspectorActions }) => {
+  const vocabulary = useEnabledVocabulary();
   const degree = view.edges.filter((edge) => edge.source === node.id || edge.target === node.id).length;
   return (
     <section className="section">
@@ -38,6 +64,7 @@ const NodeInspector = ({ node, view, actions }: { node: GraphNode; view: GraphVi
         options={vocabulary.nodeTypes}
         onCommit={(type) => actions.updateNode(node.id, { type })}
       />
+      <WithinField node={node} view={view} actions={actions} />
       <SelectField
         label="Status"
         empty="No status"
@@ -95,7 +122,7 @@ const NodeInspector = ({ node, view, actions }: { node: GraphNode; view: GraphVi
 };
 
 const EdgeInspector = ({ edge, view, actions }: { edge: GraphEdge; view: GraphView; actions: InspectorActions }) => {
-  const vocabulary = useVocabulary();
+  const vocabulary = useEnabledVocabulary();
   return (
     <section className="section">
       <h2>Edge</h2>

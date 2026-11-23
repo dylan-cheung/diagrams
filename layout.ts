@@ -14,6 +14,10 @@ export type Layout = { positions: Record<string, Position>; routes: Record<strin
 // The room inside a group box around its nodes. The top has room for the name of the group.
 export const GROUP_PADDING = { top: 40, side: 16, bottom: 16 };
 
+// The room inside a node that holds other nodes (a first-tier node with its second-tier nodes). The top has room for its
+// type and its name.
+export const CONTAINER_PADDING = { top: 52, side: 14, bottom: 14 };
+
 // In the browser, the bundled build runs ELK in the page. A layout of a graph with tens of nodes takes a few
 // milliseconds. Outside a browser (Bun tests and scripts), the bundled build cannot start its fake worker, so ELK runs in
 // a Bun worker that does not keep the process alive. ELK starts at the first layout, so the server never loads it.
@@ -54,25 +58,40 @@ const options = (direction: LayoutDirection) => ({
   "elk.hierarchyHandling": "INCLUDE_CHILDREN",
 });
 
+const CONTAINER_OPTIONS = {
+  "elk.padding": `[top=${CONTAINER_PADDING.top + 6},left=${CONTAINER_PADDING.side + 6},bottom=${CONTAINER_PADDING.bottom + 6},right=${CONTAINER_PADDING.side + 6}]`,
+  "elk.spacing.nodeNode": "24",
+};
+
 const GROUP_OPTIONS = { "elk.padding": `[top=${GROUP_PADDING.top + 8},left=${GROUP_PADDING.side + 8},bottom=${GROUP_PADDING.bottom + 8},right=${GROUP_PADDING.side + 8}]` };
 
 // Places every node and routes every edge. The nodes of a group are placed together, in a box. With onlyUnplaced, it returns positions only for the nodes that have no
 // position, below the placed nodes, and no routes, so the placed nodes and their routes stay as they are.
 export const autoLayout = async <E extends Pick<ContentEdge, "id" | "source" | "target">>(
-  nodes: (Pick<ContentNode, "id" | "position"> & { groupId?: string | null })[],
+  nodes: (Pick<ContentNode, "id" | "position"> & { groupId?: string | null; parentId?: string | null })[],
   edges: E[],
   onlyUnplaced: boolean,
   direction: LayoutDirection,
   labelOf: (edge: E) => string = () => "",
 ): Promise<Layout> => {
-  const leaf = ({ id }: { id: string }): ElkNode => ({ id, width: NODE_WIDTH, height: LAYOUT_NODE_HEIGHT });
-  const groupIds = [...new Set(nodes.flatMap(({ groupId }) => (groupId == null ? [] : [groupId])))];
+  const ids = new Set(nodes.map(({ id }) => id));
+  const parentOf = (node: { parentId?: string | null }) => (node.parentId != null && ids.has(node.parentId) ? node.parentId : null);
+  // A node that holds other nodes is a box around them, as a group is. A node within another node goes with it, not with
+  // its own group.
+  const leaf = ({ id }: { id: string }): ElkNode => {
+    const inner = nodes.filter((node) => parentOf(node) === id);
+    return inner.length === 0
+      ? { id, width: NODE_WIDTH, height: LAYOUT_NODE_HEIGHT }
+      : { id, layoutOptions: CONTAINER_OPTIONS, children: inner.map(leaf) };
+  };
+  const top = nodes.filter((node) => parentOf(node) == null);
+  const groupIds = [...new Set(top.flatMap(({ groupId }) => (groupId == null ? [] : [groupId])))];
   const graph: ElkNode = {
     id: "root",
     layoutOptions: options(direction),
     children: [
-      ...nodes.filter(({ groupId }) => groupId == null).map(leaf),
-      ...groupIds.map((groupId) => ({ id: `group:${groupId}`, layoutOptions: GROUP_OPTIONS, children: nodes.filter((node) => node.groupId === groupId).map(leaf) })),
+      ...top.filter(({ groupId }) => groupId == null).map(leaf),
+      ...groupIds.map((groupId) => ({ id: `group:${groupId}`, layoutOptions: GROUP_OPTIONS, children: top.filter((node) => node.groupId === groupId).map(leaf) })),
     ],
     edges: edges.map((edge): ElkExtendedEdge => {
       const text = labelOf(edge);
@@ -85,10 +104,29 @@ export const autoLayout = async <E extends Pick<ContentEdge, "id" | "source" | "
   const shiftY = onlyUnplaced && placed.length > 0 ? Math.max(...placed.map(({ position }) => (position as Position).y)) + LAYOUT_NODE_HEIGHT + 60 : 0;
   const unplaced = new Set(nodes.filter(({ position }) => position == null).map(({ id }) => id));
   const positions: Record<string, Position> = {};
-  // The position of a node in a group is relative to the group. The edges are at the top level, so their points are not.
-  const leaves = (result.children ?? []).flatMap((child) =>
-    child.id.startsWith("group:") ? (child.children ?? []).map((inner) => ({ ...inner, x: (child.x ?? 0) + (inner.x ?? 0), y: (child.y ?? 0) + (inner.y ?? 0) })) : [child],
-  );
+  // The position of a node in a group or in another node is relative to that box. The points of an edge are relative
+  // to the innermost box that holds both of its ends.
+  const offsets = new Map<string, Point>([["root", { x: 0, y: 0 }]]);
+  const boxOf = new Map<string, string>();
+  const flatten = (children: ElkNode[], dx: number, dy: number, box: string): ElkNode[] =>
+    children.flatMap((child) => {
+      const x = dx + (child.x ?? 0);
+      const y = dy + (child.y ?? 0);
+      offsets.set(child.id, { x, y });
+      boxOf.set(child.id, box);
+      const inner = flatten(child.children ?? [], x, y, child.id);
+      return child.id.startsWith("group:") ? inner : [{ ...child, x, y }, ...inner];
+    });
+  const leaves = flatten(result.children ?? [], 0, 0, "root");
+  const chain = (id: string) => {
+    const ids = [id];
+    for (let box = boxOf.get(id); box != null; box = boxOf.get(box)) ids.push(box);
+    return [...ids, "root"];
+  };
+  const edgeOffset = (source: string, target: string) => {
+    const around = new Set(chain(target));
+    return offsets.get(chain(source).find((id) => around.has(id)) ?? "root") ?? { x: 0, y: 0 };
+  };
   for (const child of leaves) {
     if (onlyUnplaced && !unplaced.has(child.id)) continue;
     positions[child.id] = { x: Math.round(child.x ?? 0), y: Math.round((child.y ?? 0) + shiftY) };
@@ -99,7 +137,8 @@ export const autoLayout = async <E extends Pick<ContentEdge, "id" | "source" | "
     for (const edge of result.edges ?? []) {
       const section = edge.sections?.[0];
       if (section == null) continue;
-      routes[edge.id] = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint].map(({ x, y }) => ({ x: Math.round(x), y: Math.round(y) }));
+      const shift = edgeOffset(edge.sources[0] ?? "", edge.targets[0] ?? "");
+      routes[edge.id] = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint].map(({ x, y }) => ({ x: Math.round(x + shift.x), y: Math.round(y + shift.y) }));
     }
   }
   return { positions, routes };

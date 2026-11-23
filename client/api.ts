@@ -1,6 +1,21 @@
 import { hc, type ClientResponse } from "hono/client";
 import type { AppType } from "../api.ts";
-import type { ChangeInput, FeedbackInput, DraftState, EdgeInput, FinishInput, FlowInput, GraphInput, GraphPatch, GroupInput, LayoutInput, NodeInput, Position } from "../model.ts";
+import type {
+  ChangeInput,
+  FeedbackInput,
+  DraftState,
+  EdgeInput,
+  FinishInput,
+  FlowInput,
+  GraphInput,
+  GraphPatch,
+  GroupInput,
+  LayoutInput,
+  LibraryInput,
+  LibraryPatch,
+  NodeInput,
+  Position,
+} from "../model.ts";
 
 export class ApiError extends Error {
   constructor(readonly errors: string[]) {
@@ -24,9 +39,15 @@ const nodes = client.api.nodes;
 const edges = client.api.edges;
 const graphs = client.api.graphs;
 const changes = client.api.changes;
+const libraries = client.api.libraries;
 
 export const api = {
-  vocabulary: () => unwrap(client.api.vocabulary.$get()),
+  vocabulary: () => unwrap(client.api.vocabulary.$get({ query: {} })),
+  listLibraries: () => unwrap(libraries.$get()),
+  getLibrary: (id: string) => unwrap(libraries[":id"].$get({ param: { id } })),
+  createLibrary: (input: LibraryInput) => unwrap(libraries.$post({ json: input })),
+  updateLibrary: (id: string, input: LibraryPatch) => unwrap(libraries[":id"].$patch({ param: { id }, json: input })),
+  deleteLibrary: (id: string) => unwrap(libraries[":id"].$delete({ param: { id } })),
   listGraphs: () => unwrap(graphs.$get()),
   createGraph: (input: GraphInput) => unwrap(graphs.$post({ json: input })),
   updateGraph: (id: string, input: GraphPatch) => unwrap(graphs[":id"].$patch({ param: { id }, json: input })),
@@ -62,8 +83,8 @@ export const api = {
 
   updateEdge: (id: string, input: Partial<EdgeInput>) => unwrap(edges[":id"].$patch({ param: { id }, json: input })),
 
-  createNodeInGraph: (id: string, input: NodeInput, position: Position | null) =>
-    unwrap(graphs[":id"].nodes.$post({ param: { id }, json: { ...input, position } })),
+  createNodeInGraph: (id: string, input: NodeInput, position: Position | null, parentId: string | null = null) =>
+    unwrap(graphs[":id"].nodes.$post({ param: { id }, json: { ...input, position, parentId } })),
   removeNodeFromGraph: (id: string, nodeId: string) =>
     unwrap(graphs[":id"].nodes[":nodeId"].$delete({ param: { id, nodeId } })),
   moveNodes: (id: string, positions: Record<string, Position>) =>
@@ -72,6 +93,8 @@ export const api = {
   setLayout: (id: string, layout: LayoutInput) => unwrap(graphs[":id"].layout.$put({ param: { id }, json: layout })),
   setNodeGroup: (id: string, nodeId: string, groupId: string | null) =>
     unwrap(graphs[":id"].nodes[":nodeId"].$patch({ param: { id, nodeId }, json: { groupId } })),
+  setNodeParent: (id: string, nodeId: string, parentId: string | null) =>
+    unwrap(graphs[":id"].nodes[":nodeId"].$patch({ param: { id, nodeId }, json: { parentId } })),
   createGroup: (id: string, input: GroupInput) => unwrap(graphs[":id"].groups.$post({ param: { id }, json: input })),
   updateGroup: (id: string, groupId: string, input: Partial<GroupInput>) =>
     unwrap(graphs[":id"].groups[":groupId"].$patch({ param: { id, groupId }, json: input })),

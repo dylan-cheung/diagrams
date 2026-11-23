@@ -5,6 +5,7 @@ import { WALKTHROUGH_ID } from "../walkthrough.ts";
 import { AppNav } from "./app-nav.tsx";
 import { MenuButton } from "./menu.tsx";
 import { go, Link } from "./router.tsx";
+import { useLibraries } from "./vocabulary.ts";
 
 type SortKey = "name" | "published" | "nodeCount" | "openProposals" | "updatedAt";
 
@@ -29,14 +30,16 @@ const NewGraphDialog = ({ onClose }: { onClose: () => void }) => {
   const dialog = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [libraryIds, setLibraryIds] = useState<string[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  const { libraries } = useLibraries();
 
   useEffect(() => dialog.current?.showModal(), []);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     try {
-      const graph = await api.createGraph({ name, description });
+      const graph = await api.createGraph({ name, description, libraryIds });
       go({ page: "graph", graphId: graph.id });
     } catch (error) {
       if (error instanceof ApiError) setErrors(error.errors);
@@ -66,6 +69,22 @@ const NewGraphDialog = ({ onClose }: { onClose: () => void }) => {
           <span>Purpose</span>
           <textarea rows={3} placeholder="What is this graph for?" value={description} onChange={(e) => setDescription(e.target.value)} required />
         </label>
+        <fieldset className="field library-choice">
+          <span>Libraries</span>
+          {libraries.map((library) => (
+            <label key={library.id} className="check" title={library.description}>
+              <input
+                type="checkbox"
+                checked={library.builtIn || libraryIds.includes(library.id)}
+                disabled={library.builtIn}
+                onChange={(e) => setLibraryIds(e.target.checked ? [...libraryIds, library.id] : libraryIds.filter((id) => id !== library.id))}
+              />
+              {library.name}
+              {library.builtIn && <span className="meta">always on</span>}
+            </label>
+          ))}
+          <small className="hint">The node and edge types the graph can use. You can change them later in the panel of the graph.</small>
+        </fieldset>
         {errors.map((error) => (
           <p key={error} className="warning">
             {error}

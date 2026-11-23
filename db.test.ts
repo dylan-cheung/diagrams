@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { StoreError, contentHash, openGraphStore, type GraphStore } from "./db.ts";
 import { toContent } from "./diff.ts";
 import type { EdgeInput, NodeInput } from "./model.ts";
-import { DEFAULT_VOCABULARY } from "./vocabulary.ts";
+import { CLAUDE_CODE_LIBRARY, SYSTEMS_LIBRARY } from "./libraries.ts";
+import { STATUSES } from "./vocabulary.ts";
 import { ensureWalkthrough, WALKTHROUGH_ID } from "./walkthrough.ts";
 
 let store: GraphStore;
@@ -505,7 +506,7 @@ describe("proposals", () => {
 describe("design vocabulary", () => {
   let home: string;
   beforeEach(() => {
-    home = store.createGraph({ name: "home", description: "Test graph." }).id;
+    home = store.createGraph({ name: "home", description: "Test graph.", libraryIds: ["systems"] }).id;
   });
   const addNode = (input: NodeInput) => store.createNodeInGraph(home, input, null);
   const addEdge = (input: EdgeInput) => store.createEdgeInGraph(home, input);
@@ -530,20 +531,8 @@ describe("design vocabulary", () => {
     expect(() => addEdge({ source: a.id, target: a.id, type: "service" })).toThrow("The relationship type service is not in the vocabulary.");
   });
 
-  test("uses the vocabulary it is given", () => {
-    const custom = openGraphStore(":memory:", {
-      nodeTypes: [{ id: "queue", name: "Queue", description: "" }],
-      relationshipTypes: [],
-      statuses: [],
-    });
-    const graph = custom.createGraph({ name: "custom", description: "Test graph." });
-    expect(custom.createNodeInGraph(graph.id, { name: "Jobs", type: "queue" }, null).type).toBe("queue");
-    expect(() => custom.createNodeInGraph(graph.id, { name: "API", type: "service" }, null)).toThrow(StoreError);
-    custom.close();
-  });
-
   test("a proposal can set and clear design fields, and its diff lists them", () => {
-    const one = store.createGraph({ name: "one", description: "Test graph one." });
+    const one = store.createGraph({ name: "one", description: "Test graph one.", libraryIds: ["systems"] });
     const a = store.createNodeInGraph(one.id, { name: "A", type: "service", status: "active" }, { x: 0, y: 0 });
     store.publish(one.id);
     expect(() => store.createProposal(one.id, { title: "Bad", nodes: [{ id: a.id, type: "server" }], edges: [] })).toThrow(
@@ -598,9 +587,9 @@ describe("walkthrough graph", () => {
     expect(graph.direction).toBe("vertical");
     expect(store.listVersions(WALKTHROUGH_ID).map(({ version }) => version)).toEqual([1]);
     const ids = (terms: { id: string }[]) => terms.map(({ id }) => id).sort();
-    expect([...new Set(nodes.map(({ type }) => type))].sort()).toEqual(ids(DEFAULT_VOCABULARY.nodeTypes));
-    expect([...new Set(edges.flatMap(({ type }) => (type == null ? [] : [type])))].sort()).toEqual(ids(DEFAULT_VOCABULARY.relationshipTypes));
-    expect([...new Set([...nodes, ...edges].flatMap(({ status }) => (status == null ? [] : [status])))].sort()).toEqual(ids(DEFAULT_VOCABULARY.statuses));
+    expect([...new Set(nodes.map(({ type }) => type))].sort()).toEqual(ids(SYSTEMS_LIBRARY.nodeTypes));
+    expect([...new Set(edges.flatMap(({ type }) => (type == null ? [] : [type])))].sort()).toEqual(ids(SYSTEMS_LIBRARY.relationshipTypes));
+    expect([...new Set([...nodes, ...edges].flatMap(({ status }) => (status == null ? [] : [status])))].sort()).toEqual(ids(STATUSES));
     expect(edges.some(({ source, target }) => source === target)).toBe(true);
     expect(edges.some(({ directed }) => !directed)).toBe(true);
     expect(edges.every(({ route }) => route != null && route.length >= 2)).toBe(true);
@@ -644,7 +633,7 @@ describe("edge routes", () => {
 
 describe("restore the draft", () => {
   test("brings back deleted nodes and edges with the same ids, positions and routes", () => {
-    const graph = store.createGraph({ name: "undo", description: "Test graph." }).id;
+    const graph = store.createGraph({ name: "undo", description: "Test graph.", libraryIds: ["systems"] }).id;
     const a = store.createNodeInGraph(graph, { name: "A", type: "service" }, { x: 0, y: 0 }).id;
     const b = store.createNodeInGraph(graph, { name: "B" }, { x: 0, y: 200 }).id;
     const ab = store.createEdgeInGraph(graph, { source: a, target: b, label: "calls" }).id;
@@ -680,13 +669,13 @@ describe("groups", () => {
 
     const skills = store.createGroup(one, { name: "Skills", nodeIds: [b] });
     expect([groupOf(one, a), groupOf(one, b)]).toEqual([rules.id, skills.id]);
-    store.setNodeGroup(one, a, null);
+    store.setNodePlacement(one, a, { groupId: null });
     expect(groupOf(one, a)).toBeNull();
     const c = store.createNodeInGraph(one, { name: "C" }, null, rules.id).id;
     expect(groupOf(one, c)).toBe(rules.id);
 
     expect(() => store.createGroup(one, { name: "Bad", nodeIds: ["nope"] })).toThrow("The node nope is not in the graph.");
-    expect(() => store.setNodeGroup(two, a, rules.id)).toThrow("The group does not exist in this graph.");
+    expect(() => store.setNodePlacement(two, a, { groupId: rules.id })).toThrow("The group does not exist in this graph.");
     expect(store.updateGroup(one, skills.id, { description: "Personal skills." }).name).toBe("Skills");
     expect(skills.color).toBeNull();
     expect(store.updateGroup(one, skills.id, { color: "green" }).color).toBe("green");
@@ -763,5 +752,121 @@ describe("changes", () => {
     expect(() => store.diffChange(change.id)).toThrow("The change has no repository.");
     store.updateChange(change.id, { repo: "/tmp", base: "main", branch: "--output=x" });
     expect(() => store.diffChange(change.id)).toThrow('The change branch cannot start with "-".');
+  });
+});
+
+describe("libraries", () => {
+  test("a new database has General, Systems, Claude Code and Codebase, and General is built in", () => {
+    const libraries = store.listLibraries();
+    expect(libraries.map(({ id }) => id)).toEqual(["general", "claude-code", "codebase", "systems"]);
+    expect(libraries.map(({ builtIn }) => builtIn)).toEqual([true, false, false, false]);
+    expect(store.vocabulary().nodeTypes.map(({ id }) => id)).toContain("concept");
+    expect(() => store.updateLibrary("general", { name: "Other" })).toThrow("The General library cannot change.");
+    expect(() => store.deleteLibrary("general")).toThrow("The General library cannot be deleted.");
+  });
+
+  test("a graph uses only the types of its libraries, and General is always on", () => {
+    const graph = store.createGraph({ name: "basic", description: "Test graph." });
+    expect(graph.libraryIds).toEqual(["general"]);
+    const a = store.createNodeInGraph(graph.id, { name: "A" }, null);
+    expect(() => store.createNodeInGraph(graph.id, { name: "API", type: "service" }, null)).toThrow(
+      "The node type service is in the library Systems, and the graph basic does not use that library.",
+    );
+    expect(() => store.createEdgeInGraph(graph.id, { source: a.id, target: a.id, type: "calls" })).toThrow("does not use that library");
+    expect(() => store.updateNode(a.id, { type: "skill" })).toThrow("does not use that library");
+    expect(store.vocabulary(graph.id).nodeTypes).toEqual([]);
+
+    expect(store.updateGraph(graph.id, { libraryIds: ["systems"] }).libraryIds).toEqual(["general", "systems"]);
+    expect(store.updateNode(a.id, { type: "service" }).type).toBe("service");
+    expect(store.vocabulary(graph.id).nodeTypes.map(({ id }) => id)).toEqual(SYSTEMS_LIBRARY.nodeTypes.map(({ id }) => id));
+    expect(() => store.updateGraph(graph.id, { libraryIds: ["nope"] })).toThrow("The library nope does not exist.");
+
+    store.updateGraph(graph.id, { libraryIds: [] });
+    expect(store.view(graph.id).nodes[0]?.type).toBe("service");
+  });
+
+  test("a concept is always within a first-tier node of its library", () => {
+    const graph = store.createGraph({ name: "setup", description: "Test graph.", libraryIds: ["claude-code"] }).id;
+    const skill = store.createNodeInGraph(graph, { name: "review-pr", type: "skill" }, { x: 0, y: 0 });
+    const other = store.createNodeInGraph(graph, { name: "Note" }, { x: 400, y: 0 });
+    expect(() => store.createNodeInGraph(graph, { name: "Never comment", type: "concept" }, null)).toThrow(
+      "A node of the type Concept must be within a node of one of these types:",
+    );
+    expect(() => store.createNodeInGraph(graph, { name: "Bad", type: "concept" }, null, null, other.id)).toThrow("can be within a node of one of these types only");
+    expect(() => store.createNodeInGraph(graph, { name: "Bad", type: "skill" }, null, null, skill.id)).toThrow("cannot be within another node");
+    const concept = store.createNodeInGraph(graph, { name: "Never comment", type: "concept" }, { x: 14, y: 52 }, null, skill.id);
+    expect(store.view(graph).nodes.find(({ id }) => id === concept.id)?.parentId).toBe(skill.id);
+
+    expect(() => store.updateNode(skill.id, { type: null })).toThrow('The node holds "Never comment"');
+    expect(() => store.updateNode(concept.id, { type: null })).toThrow("A node of the type no type cannot be within another node.");
+    const plugin = store.createNodeInGraph(graph, { name: "himarley", type: "plugin" }, { x: 0, y: 300 });
+    store.setNodePlacement(graph, concept.id, { parentId: plugin.id });
+    expect(store.view(graph).nodes.find(({ id }) => id === concept.id)?.parentId).toBe(plugin.id);
+    expect(() => store.setNodePlacement(graph, concept.id, { parentId: null })).toThrow("must be within a node");
+
+    const version = store.publish(graph);
+    expect(version.view.nodes.find(({ id }) => id === concept.id)?.parentId).toBe(plugin.id);
+    expect(version.view.graph.libraryIds).toEqual(["general", "claude-code"]);
+
+    store.removeNodeFromGraph(graph, plugin.id);
+    expect(store.view(graph).nodes.map(({ name }) => name).sort()).toEqual(["Note", "review-pr"]);
+  });
+
+  test("an undo puts a node back into the node that held it", () => {
+    const graph = store.createGraph({ name: "undo parents", description: "Test graph.", libraryIds: ["codebase"] }).id;
+    const domain = store.createNodeInGraph(graph, { name: "Orders", type: "domain" }, { x: 0, y: 0 });
+    const layer = store.createNodeInGraph(graph, { name: "OrderController", type: "controller-layer" }, { x: 14, y: 52 }, null, domain.id);
+    const before = store.view(graph);
+    store.removeNodeFromGraph(graph, domain.id);
+    expect(store.view(graph).nodes).toEqual([]);
+    const content = toContent(before);
+    const restored = store.restoreDraft(graph, {
+      content: { ...content, nodes: content.nodes.map((node) => ({ ...node, parentId: before.nodes.find(({ id }) => id === node.id)?.parentId ?? null })) },
+      routes: {},
+    });
+    expect(restored.nodes.find(({ id }) => id === layer.id)?.parentId).toBe(domain.id);
+  });
+
+  test("a library keeps each type id unique across libraries, and a within list names its own first-tier types", () => {
+    const library = store.createLibrary({ name: "Data pipelines", description: "Jobs and stores." });
+    expect(library).toMatchObject({ id: "data-pipelines", nodeTypes: [], relationshipTypes: [], builtIn: false });
+    expect(() => store.createLibrary({ name: "Data pipelines" })).toThrow("A library with the id data-pipelines already exists.");
+    expect(() => store.updateLibrary(library.id, { nodeTypes: [{ id: "service", name: "Service", description: "", within: [] }] })).toThrow(
+      "The node type id service is already in the library Systems.",
+    );
+    expect(() => store.updateLibrary(library.id, { nodeTypes: [{ id: "step", name: "Step", description: "", within: ["skill"] }] })).toThrow(
+      "can be within first-tier types of this library only",
+    );
+    const saved = store.updateLibrary(library.id, {
+      nodeTypes: [
+        { id: "job", name: "Job", description: " A scheduled run. ", within: [] },
+        { id: "step", name: "Step", description: "", within: ["job"] },
+      ],
+      relationshipTypes: [{ id: "feeds", name: "Feeds", description: "" }],
+    });
+    expect(saved.nodeTypes.map(({ id, description, within }) => [id, description, within])).toEqual([
+      ["job", "A scheduled run.", []],
+      ["step", "", ["job"]],
+    ]);
+    expect(CLAUDE_CODE_LIBRARY.nodeTypes.find(({ id }) => id === "concept")?.within).toContain("skill");
+
+    const graph = store.createGraph({ name: "pipeline", description: "Test graph.", libraryIds: [library.id] });
+    store.deleteLibrary(library.id);
+    expect(store.view(graph.id).graph.libraryIds).toEqual(["general"]);
+  });
+
+  test("a database from before libraries gives Systems to the graphs that it has", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "graphs-")), "before-libraries.sqlite");
+    const old = new Database(path);
+    old.run("CREATE TABLE graphs (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)");
+    old.run("INSERT INTO graphs VALUES ('g1', 'legacy', '2026-10-29T00:00:00.000Z', '2026-10-29T00:00:00.000Z')");
+    old.close();
+    const migrated = openGraphStore(path);
+    expect(migrated.view("g1").graph.libraryIds).toEqual(["general", "systems"]);
+    expect(migrated.createGraph({ name: "new", description: "Test graph." }).libraryIds).toEqual(["general"]);
+    migrated.close();
+    const reopened = openGraphStore(path);
+    expect(reopened.listLibraries()).toHaveLength(4);
+    reopened.close();
   });
 });

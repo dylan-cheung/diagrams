@@ -223,6 +223,8 @@ describe("API docs", () => {
       "/api/graphs/{id}/runs/{runId}/finish",
       "/api/graphs/{id}/versions",
       "/api/graphs/{id}/versions/{version}",
+      "/api/libraries",
+      "/api/libraries/{id}",
       "/api/nodes",
       "/api/nodes/{id}",
       "/api/vocabulary",

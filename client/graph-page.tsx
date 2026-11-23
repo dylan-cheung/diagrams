@@ -1,18 +1,19 @@
 import { Panel, ReactFlowProvider } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toContent } from "../diff.ts";
-import { autoLayout } from "../layout.ts";
+import { autoLayout, CONTAINER_PADDING, NODE_HEIGHT } from "../layout.ts";
 import type { FlowStep, Run, GraphContent, GraphEdge, GraphSummary, GraphVersion, GraphVersionSummary, GraphView, LayoutDirection, Position, ProposalSummary } from "../model.ts";
 import { ApiError, api } from "./api.ts";
 import { edgeText, GraphCanvas, type Selection } from "./canvas.tsx";
 import { FlowPanel, FlowsSection, pathOf, RunPanel, type FlowActions, type RunActions } from "./flow-panel.tsx";
 import { GroupInspector, GroupsSection, type GroupActions } from "./group-panel.tsx";
 import { GraphFooter, GraphTitle, Inspector, type InspectorActions } from "./inspector.tsx";
+import { LibrariesSection } from "./library-section.tsx";
 import { MenuButton } from "./menu.tsx";
 import { ProposalReview } from "./review.tsx";
 import { go, Link, type Route } from "./router.tsx";
 import { termName } from "../vocabulary.ts";
-import { useVocabulary } from "./vocabulary.ts";
+import { EnabledLibrariesContext, useLibraries, useVocabulary } from "./vocabulary.ts";
 import { EMPTY_HISTORY, movedTo, recordChange, snapshotOf, stateAt, type History } from "./history.ts";
 import { GraphSections, HistorySection, VersionPanel, type Shown } from "./view-panel.tsx";
 
@@ -65,6 +66,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
   const [saving, setSaving] = useState(0);
   const [history, setHistory] = useState<History>(EMPTY_HISTORY);
   const vocabulary = useVocabulary();
+  const { libraries } = useLibraries();
 
   const loadDraft = useCallback(async () => {
     const next = await api.view(graphId);
@@ -169,6 +171,16 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     [groupView],
   );
   const groupSizes = useMemo(() => new Map(canvasGroups.map(({ id, nodeIds }) => [id, nodeIds.length])), [canvasGroups]);
+  // The node that holds each node of a second-tier type. The canvas draws each holder as a box around its nodes.
+  const parents = useMemo(
+    () => new Map((groupView?.nodes ?? []).flatMap((node) => (node.parentId == null ? [] : [[node.id, node.parentId] as const]))),
+    [groupView],
+  );
+  const libraryIds = draft?.graph.libraryIds;
+  const enabledLibraries = useMemo(
+    () => (libraryIds == null ? null : libraries.filter((library) => library.builtIn || libraryIds.includes(library.id))),
+    [libraries, libraryIds],
+  );
   const group = groupView?.groups.find(({ id }) => id === selectedGroup);
   const groupMembers = (groupView?.nodes ?? []).filter((node) => node.groupId === group?.id).map(({ id, name }) => ({ id, name }));
   const flow = flows.find(({ id }) => id === flowId);
@@ -247,6 +259,14 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     updateEdge: (id, patch) => void change(`Edit ${edgeName(id)}`, () => api.updateEdge(id, patch)),
     removeEdgeFromGraph: (id) => void change(`Delete ${edgeName(id)}`, () => api.removeEdgeFromGraph(graphId, id)),
     setNodeGroup: (id, groupId) => void run(() => api.setNodeGroup(graphId, id, groupId)),
+    setNodeParent: (id, parentId) => {
+      const parent = draft?.nodes.find((node) => node.id === parentId);
+      if (parent == null) return;
+      void change(`Move "${nodeName(id)}" into "${parent.name}"`, async () => {
+        await api.setNodeParent(graphId, id, parentId);
+        await api.moveNodes(graphId, { [id]: placeIn(parentId, id) });
+      });
+    },
     createGroupWith: (nodeId, name) => void run(() => api.createGroup(graphId, { name, nodeIds: [nodeId] })),
   };
 
@@ -264,9 +284,40 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     },
   };
 
-  const addNode = async (type: string | null, position: Position) => {
-    const name = `New ${(termName(vocabulary.nodeTypes, type) ?? "node").toLowerCase()}`;
-    const node = await change(`Add "${name}"`, () => api.createNodeInGraph(graphId, { name, type }, position));
+  // A free place inside a node for one more node: below the nodes that it already holds.
+  const placeIn = (parentId: string, except?: string): Position => {
+    const nodes = draft?.nodes ?? [];
+    const inner = nodes.filter((node) => node.parentId === parentId && node.id !== except && node.position != null).map(({ position }) => position as Position);
+    if (inner.length > 0) return { x: Math.min(...inner.map(({ x }) => x)), y: Math.max(...inner.map(({ y }) => y)) + NODE_HEIGHT + 24 };
+    const at = nodes.find(({ id }) => id === parentId)?.position ?? { x: 0, y: 0 };
+    return { x: at.x + CONTAINER_PADDING.side, y: at.y + CONTAINER_PADDING.top };
+  };
+
+  // A node of a second-tier type goes into the node it is dropped on, or into the selected node. Either can also be a
+  // node that is already in such a node.
+  const addNode = async (type: string | null, position: Position, into?: string) => {
+    const term = vocabulary.nodeTypes.find(({ id }) => id === type);
+    const name = `New ${(term?.name ?? "node").toLowerCase()}`;
+    const within = term?.within ?? [];
+    let parentId: string | null = null;
+    let at = position;
+    if (within.length > 0) {
+      const holder = (id: string | null | undefined) => {
+        const node = draft?.nodes.find((item) => item.id === id);
+        if (node == null) return undefined;
+        return node.type != null && within.includes(node.type) ? node : draft?.nodes.find((item) => item.id === node.parentId && item.type != null && within.includes(item.type));
+      };
+      const dropped = holder(into);
+      const parent = dropped ?? holder(selection?.kind === "node" ? selection.id : null);
+      if (parent == null) {
+        const names = within.map((id) => termName(vocabulary.nodeTypes, id) ?? id).join(", ");
+        setErrors([`A ${(term?.name ?? "node").toLowerCase()} is always within another node. Drop it onto a node of one of these types: ${names}. Or select such a node and click the button.`]);
+        return;
+      }
+      parentId = parent.id;
+      if (dropped == null) at = placeIn(parent.id);
+    }
+    const node = await change(`Add "${name}"`, () => api.createNodeInGraph(graphId, { name, type }, at, parentId));
     if (node != null) setSelection({ kind: "node", id: node.id });
   };
 
@@ -473,6 +524,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     );
 
   return (
+    <EnabledLibrariesContext value={enabledLibraries}>
     <div className="app">
       {banner}
       <div className="body">
@@ -493,7 +545,8 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
                 onMove={move}
                 onConnect={(source, target) => void connect(source, target)}
                 onRemove={remove}
-                onAddNode={(type, position) => void addNode(type, position)}
+                onAddNode={(type, position, into) => void addNode(type, position, into)}
+                parents={parents}
                 paletteFooter={
                   <div className="palette history-controls" role="group" aria-label="History">
                     <button
@@ -632,6 +685,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
                     onOpen={openGroup}
                     onCreate={(input) => void run(() => api.createGroup(graphId, input)).then((created) => created != null && openGroup(created.id))}
                   />
+                  <LibrariesSection libraryIds={draft.graph.libraryIds} onChange={(ids) => void run(() => api.updateGraph(graphId, { libraryIds: ids }))} />
                   {sections}
                   <HistorySection history={history} undoKey={UNDO_KEY} redoKey={REDO_KEY} onGo={(index) => void goToHistory(index)} disabled={saving > 0} />
                   <GraphFooter view={draft} />
@@ -649,5 +703,6 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
         </aside>
       </div>
     </div>
+    </EnabledLibrariesContext>
   );
 };

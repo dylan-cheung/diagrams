@@ -366,6 +366,11 @@ export const GraphCanvas = ({
       fitView
       fitViewOptions={{ padding: 0.15, maxZoom: 1.1 }}
       minZoom={0.15}
+      // On a trackpad, a pinch zooms and a two-finger swipe moves the view. A mouse wheel moves the view too, and
+      // Ctrl or ⌘ with the wheel zooms.
+      zoomOnPinch
+      panOnScroll
+      zoomOnScroll={false}
     >
       <Background gap={20} />
       <Controls showInteractive={false} />

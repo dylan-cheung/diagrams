@@ -1,7 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import { StoreError, type GraphStore } from "./db.ts";
+import { autoLayout } from "./layout.ts";
 import { createMcp } from "./mcp.ts";
+import { termName } from "./vocabulary.ts";
 import {
   AdvanceInput,
   ApplyInput,
@@ -34,6 +36,7 @@ import {
   Library,
   LibraryInput,
   LibraryPatch,
+  LayoutDirection,
   NodeInGraphPatch,
   GraphView,
   LayoutInput,
@@ -95,6 +98,12 @@ const noContent = { 204: { description: "Done." } };
 
 const route = <const T extends Parameters<typeof createRoute>[0]>(config: T) =>
   createRoute({ ...config, responses: { ...errors, ...config.responses } });
+
+const AutoLayoutInput = z
+  .object({
+    direction: LayoutDirection.optional().openapi({ description: "The direction to lay out in. It becomes the direction of the graph. The default is the direction the graph has." }),
+  })
+  .openapi("AutoLayoutInput");
 
 const VocabularyQuery = z.object({
   graphId: z.string().optional().openapi({ param: { name: "graphId", in: "query" }, description: "Only the types of the libraries this graph uses." }),
@@ -436,6 +445,28 @@ export const createApi = (store: GraphStore) => {
       (c) => {
         store.setLayout(c.req.valid("param").id, c.req.valid("json"));
         return c.body(null, 204);
+      },
+    )
+    .openapi(
+      route({
+        method: "post",
+        path: "/api/graphs/{id}/auto-layout",
+        tags: tag.membership,
+        summary: "Run auto layout",
+        description:
+          "Places every node of the graph and routes every edge with the layered layout of the editor (ELK), and saves the result, as the Auto layout button does. The nodes of a group stay together, and the nodes within a node stay in its box.",
+        request: { params: IdParams, ...body(AutoLayoutInput) },
+        responses: { 200: json(GraphView, "The graph with its new layout.") },
+      }),
+      async (c) => {
+        const { id } = c.req.valid("param");
+        const { direction } = c.req.valid("json");
+        const { graph, nodes, edges } = store.view(id);
+        if (direction != null && direction !== graph.direction) store.updateGraph(id, { direction });
+        const relationshipTypes = store.vocabulary().relationshipTypes;
+        const label = (edge: { label: string; type: string | null }) => (edge.label !== "" ? edge.label : (termName(relationshipTypes, edge.type) ?? ""));
+        store.setLayout(id, await autoLayout(nodes, edges, false, direction ?? graph.direction, label));
+        return c.json(store.view(id), 200);
       },
     )
     .openapi(

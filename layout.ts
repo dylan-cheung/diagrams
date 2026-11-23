@@ -20,7 +20,7 @@ export const CONTAINER_PADDING = { top: 52, side: 14, bottom: 14 };
 
 // In the browser, the bundled build runs ELK in the page. A layout of a graph with tens of nodes takes a few
 // milliseconds. Outside a browser (Bun tests and scripts), the bundled build cannot start its fake worker, so ELK runs in
-// a Bun worker that does not keep the process alive. ELK starts at the first layout, so the server never loads it.
+// a Bun worker that does not keep the process alive. ELK starts at the first layout, so the server loads it only when a client asks it for an auto layout.
 let instance: InstanceType<typeof ELK> | null = null;
 const elk = () => {
   instance ??=

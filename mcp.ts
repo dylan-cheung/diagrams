@@ -8,7 +8,7 @@ export const INSTRUCTIONS = [
   "Diagram is the user's local app for graphs of systems and features, and for reviewing code changes. It runs at http://127.0.0.1:4848.",
   "- A graph holds nodes and edges. Each node and edge can have a type, a status, a description (what it is) and an intent (why it exists). The types come from libraries (list_libraries): a graph uses some libraries (libraryIds; General, the node and edge without a type, is always on), and its nodes and edges can use only their types. get_vocabulary with graphId lists the types a graph can use. A node of a second-tier type, such as concept, is within a node of a first-tier type: give its parentId. A flow is one path through a graph, step by step. A group is a named box with a description that holds a set of the nodes of one graph, for example the parts that one file defines; each node has the groupId of its group. Publish saves a version that does not change.",
   "- A change shows one code change in four views: the idea (notes and points), the concepts (a graph), the pseudocode (blocks by layer) and the code (the diff of a git branch). Trace links connect each item to the items in the next view that carry it out. Feedback is a list of notes that the user writes while reviewing a change.",
-  "- To change a graph that already has content, prefer create_proposal: the user reviews the proposal in Diagram before it changes the graph. Build a new graph directly with create_graph (with the libraryIds it needs), add_node and add_edge.",
+  "- To change a graph that already has content, prefer create_proposal: the user reviews the proposal in Diagram before it changes the graph. Build a new graph directly with create_graph (with the libraryIds it needs), add_node and add_edge, then run auto_layout to place it.",
   "- Give the user links to what you made or changed: http://127.0.0.1:4848/graphs/<graph id> for a graph, and http://127.0.0.1:4848/changes/<change id>/idea for a change (or /concepts, /pseudocode, /code).",
 ].join("\n");
 
@@ -34,6 +34,7 @@ const ROUTES: { name: string; method: "get" | "post" | "patch" | "put" | "delete
   { name: "add_edge", method: "post", path: "/api/graphs/{id}/edges" },
   { name: "update_edge", method: "patch", path: "/api/edges/{id}" },
   { name: "remove_edge_from_graph", method: "delete", path: "/api/graphs/{id}/edges/{edgeId}" },
+  { name: "auto_layout", method: "post", path: "/api/graphs/{id}/auto-layout" },
   { name: "publish_graph", method: "post", path: "/api/graphs/{id}/versions" },
   { name: "list_versions", method: "get", path: "/api/graphs/{id}/versions" },
   { name: "get_version", method: "get", path: "/api/graphs/{id}/versions/{version}" },

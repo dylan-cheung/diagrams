@@ -45,6 +45,10 @@ describe("MCP server", () => {
     const b = JSON.parse((await call("add_node", { graphId: graph.id, name: "B" })).text);
     await call("add_edge", { graphId: graph.id, source: a.id, target: b.id, type: "calls" });
     await call("update_node", { nodeId: b.id, description: "The second node." });
+    const placed = JSON.parse((await call("auto_layout", { graphId: graph.id, direction: "vertical" })).text);
+    expect(placed.graph.direction).toBe("vertical");
+    expect(placed.nodes.every(({ position }: { position: unknown }) => position != null)).toBe(true);
+    expect(placed.edges[0].route.length).toBeGreaterThanOrEqual(2);
     const view = JSON.parse((await call("get_graph", { graphId: graph.id })).text);
     expect(view.nodes.map(({ name, description }: { name: string; description: string }) => [name, description])).toEqual([
       ["A", ""],

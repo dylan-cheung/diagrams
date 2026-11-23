@@ -430,7 +430,7 @@ export const Guide = () => {
                 Open the proposal from <b>Proposals</b> in the panel.
               </li>
               <li>
-                The <b>Ledger</b> tab lists each added, removed and changed node and edge. The <b>Graph</b> tab shows both graphs on one canvas in color.
+                The page shows both graphs on one canvas in color, placed by auto layout. Click a node or an edge to see its fields before and after.
               </li>
               <li>
                 Click <b>Apply and publish</b> to change the graph and publish a version. Click <b>Apply to draft</b> to change only the draft. Or discard the

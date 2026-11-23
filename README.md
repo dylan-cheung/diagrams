@@ -115,7 +115,7 @@ A proposal is a changed copy of a graph that you review before it changes the gr
 1. Read the graph with `GET /api/graphs/{id}`.
 2. Send the full proposed graph to `POST /api/graphs/{id}/proposals`. Use existing ids to keep or change nodes and edges, and new keys (for example `review-step`) for new ones. Omitted fields keep the existing value. A node or edge that is not in the list leaves the graph.
 3. Read the changes with `GET /api/graphs/{id}/proposals/{proposalId}/diff`. `against` is `latest` (the default), a version number, or `draft`.
-4. In the app, open the proposal from **Proposals** in the panel of the graph, or at `/graphs/{id}/proposals/{proposalId}`. The **Ledger** tab lists each added, removed and changed node and edge, with the fields before and after. The **Graph** tab shows both graphs on one canvas in color. A warning shows when a changed node is also in other graphs, because the change applies there too.
+4. In the app, open the proposal from **Proposals** in the panel of the graph, or at `/graphs/{id}/proposals/{proposalId}`. The page shows both graphs on one canvas in color, placed by auto layout each time (the draft keeps its own layout). Click a node or an edge to see its fields before and after in the panel. A warning shows when a changed node is also in other graphs, because the change applies there too.
 5. **Apply and publish** makes the graph equal to the proposal and publishes a new version. **Apply to draft** changes only the editable graph. Apply replaces edits that are not published. Use `PUT` on the proposal to revise it.
 
 Not supported: hyperedges (one edge with more than two nodes), nodes more than one level deep, and schemas that limit which labels can connect.

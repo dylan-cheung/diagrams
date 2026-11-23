@@ -1,7 +1,8 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { countChanges, diffGraphs, hasChanges, toContent } from "../diff.ts";
-import { NODE_HEIGHT, NODE_WIDTH, autoLayout } from "../layout.ts";
+import { autoLayout } from "../layout.ts";
+import type { Point } from "../geometry.ts";
 import type {
   ContentEdge,
   ContentNode,
@@ -13,11 +14,11 @@ import type {
   GraphView,
   LayoutDirection,
   NodeChange,
-  Position,
   Proposal,
 } from "../model.ts";
 import { ApiError, api } from "./api.ts";
-import { GraphCanvas, type Marks, type Selection } from "./canvas.tsx";
+import { edgeText, GraphCanvas, type Marks, type Selection } from "./canvas.tsx";
+import { useVocabulary } from "./vocabulary.ts";
 
 type Against = number | "latest" | "draft";
 type Base = number | "draft" | "empty";
@@ -151,87 +152,21 @@ const Counts = ({ added, removed, changed }: { added: number; removed: number; c
   </span>
 );
 
-const Ledger = ({
-  diff,
-  base,
-  names,
-  proposal,
-  onSelect,
-}: {
-  diff: GraphDiff;
-  base: Base;
-  names: Names;
-  proposal: Proposal;
-  onSelect: (selection: Selection) => void;
-}) => {
-  const counts = countChanges(diff);
-  const nodes = diff.nodes.filter(({ status }) => status !== "unchanged");
-  const edges = diff.edges.filter(({ status }) => status !== "unchanged");
-  const unchanged = diff.nodes.length - nodes.length;
-  return (
-    <div className="ledger">
-      <h1>{proposal.title}</h1>
-      <p className="hint">Changes from {baseName(base)} to the proposal.</p>
-      {!hasChanges(diff) && <p className="empty">The proposal is the same as {baseName(base)}.</p>}
-      {diff.graph.length > 0 && (
-        <section>
-          <h2>Graph</h2>
-          <FieldTable fields={diff.graph} names={names} />
-        </section>
-      )}
-      {nodes.length > 0 && (
-        <section>
-          <h2>
-            Nodes <Counts {...counts.nodes} />
-          </h2>
-          {nodes.map((change) => (
-            <NodeEntry
-              key={change.id}
-              change={change}
-              names={names}
-              proposal={proposal}
-              onSelect={() => onSelect({ kind: "node", id: change.id })}
-            />
-          ))}
-        </section>
-      )}
-      {edges.length > 0 && (
-        <section>
-          <h2>
-            Edges <Counts {...counts.edges} />
-          </h2>
-          {edges.map((change) => (
-            <EdgeEntry key={change.id} change={change} names={names} onSelect={() => onSelect({ kind: "edge", id: change.id })} />
-          ))}
-        </section>
-      )}
-      {(unchanged > 0 || counts.moved > 0) && (
-        <p className="hint">
-          {unchanged} nodes and {diff.edges.length - edges.length} edges do not change.
-          {counts.moved > 0 && ` ${counts.moved} of the nodes only move.`}
-        </p>
-      )}
-    </div>
-  );
-};
-
-const mergedContent = async (diff: GraphDiff, proposal: Proposal, direction: LayoutDirection): Promise<GraphContent> => {
+// The proposed graph with the removed nodes and edges kept in it, so the canvas can mark them. Auto layout always places
+// the whole of it, because the positions of the draft do not fit the new nodes and edges. The draft keeps its own layout.
+const mergedContent = async (
+  diff: GraphDiff,
+  proposal: Proposal,
+  direction: LayoutDirection,
+  labelOf: (edge: ContentEdge) => string,
+): Promise<{ content: GraphContent; routes: Map<string, Point[]> }> => {
   const nodes = diff.nodes.flatMap(({ after, before }) => (after ?? before) ?? []);
   const edges = diff.edges.flatMap(({ after, before }) => (after ?? before) ?? []);
-  const { positions } = await autoLayout(nodes, edges, true, direction);
-  const placed = nodes.map((node) => ({ ...node, position: node.position ?? positions[node.id] ?? null }));
-  const removed = new Set(diff.nodes.filter(({ status }) => status === "removed").map(({ id }) => id));
-  const taken = placed.flatMap(({ id, position }) => (removed.has(id) || position == null ? [] : [position]));
-  const overlaps = (position: Position) =>
-    taken.some(({ x, y }) => Math.abs(x - position.x) < NODE_WIDTH && Math.abs(y - position.y) < NODE_HEIGHT + 20);
-  const spread = placed.map((node) => {
-    if (!removed.has(node.id) || node.position == null) return node;
-    let position = node.position;
-    while (overlaps(position)) position = { x: position.x, y: position.y + NODE_HEIGHT + 40 };
-    taken.push(position);
-    return { ...node, position };
-  });
-  return { graph: proposal.content.graph, nodes: spread, edges };
+  const { positions, routes } = await autoLayout(nodes, edges, false, direction, labelOf);
+  return {
+    content: { graph: proposal.content.graph, nodes: nodes.map((node) => ({ ...node, position: positions[node.id] ?? null })), edges },
+    routes: new Map(Object.entries(routes)),
+  };
 };
 
 const Legend = () => (
@@ -262,7 +197,6 @@ export const ProposalReview = ({
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [against, setAgainst] = useState<Against>("latest");
   const [result, setResult] = useState<{ against: Base; diff: GraphDiff } | null>(null);
-  const [tab, setTab] = useState<"ledger" | "graph">("ledger");
   const [selection, setSelection] = useState<Selection>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [draftDirty, setDraftDirty] = useState(false);
@@ -298,17 +232,18 @@ export const ProposalReview = ({
     () => new Map(result?.diff.nodes.flatMap(({ id, after, before }) => [[id, (after ?? before)?.name ?? id] as const]) ?? []),
     [result],
   );
-  const [merged, setMerged] = useState<GraphContent | null>(null);
+  const vocabulary = useVocabulary();
+  const [merged, setMerged] = useState<{ content: GraphContent; routes: Map<string, Point[]> } | null>(null);
   useEffect(() => {
     if (result == null || proposal == null) return setMerged(null);
     let current = true;
-    void mergedContent(result.diff, proposal, draft.graph.direction).then((content) => {
-      if (current) setMerged(content);
+    void mergedContent(result.diff, proposal, draft.graph.direction, (edge) => edgeText(edge, vocabulary)).then((next) => {
+      if (current) setMerged(next);
     });
     return () => {
       current = false;
     };
-  }, [result, proposal, draft.graph.direction]);
+  }, [result, proposal, draft.graph.direction, vocabulary]);
   const marks = useMemo<Marks | undefined>(
     () =>
       result == null
@@ -338,11 +273,6 @@ export const ProposalReview = ({
     }
   };
 
-  const select = (next: Selection) => {
-    setSelection(next);
-    if (next != null) setTab("graph");
-  };
-
   const latest = versions[0]?.version ?? null;
   const stale = proposal != null && latest != null && proposal.baseVersion !== latest;
   const selectedNode = selection?.kind === "node" ? result?.diff.nodes.find(({ id }) => id === selection.id) : undefined;
@@ -357,14 +287,7 @@ export const ProposalReview = ({
             <button type="button" onClick={onClose}>
               ← Back to graph
             </button>
-            <div className="tabs" role="tablist">
-              <button type="button" role="tab" aria-selected={tab === "ledger"} className={tab === "ledger" ? "active" : undefined} onClick={() => setTab("ledger")}>
-                Ledger
-              </button>
-              <button type="button" role="tab" aria-selected={tab === "graph"} className={tab === "graph" ? "active" : undefined} onClick={() => setTab("graph")}>
-                Graph
-              </button>
-            </div>
+            {proposal != null && <strong className="review-title">{proposal.title}</strong>}
           </div>
           <label className="against">
             <span>Compare with</span>
@@ -392,11 +315,10 @@ export const ProposalReview = ({
         <div className="canvas">
           {result == null || proposal == null || merged == null ? (
             <p className="empty">Loading the proposal.</p>
-          ) : tab === "ledger" ? (
-            <Ledger diff={result.diff} base={result.against} names={names} proposal={proposal} onSelect={select} />
           ) : (
             <ReactFlowProvider key={`${proposalId}:${String(result.against)}`}>
-              <GraphCanvas view={merged} selection={selection} onSelect={setSelection} marks={marks} readOnly />
+              {!hasChanges(result.diff) && <p className="empty review-same">The proposal is the same as {baseName(result.against)}.</p>}
+              <GraphCanvas view={merged.content} routes={merged.routes} selection={selection} onSelect={setSelection} marks={marks} readOnly />
               <Legend />
             </ReactFlowProvider>
           )}
@@ -435,7 +357,7 @@ export const ProposalReview = ({
                 Made from {proposal.baseVersion == null ? "an unpublished graph" : `version ${proposal.baseVersion}`} on {new Date(proposal.createdAt).toLocaleString()}.
               </p>
               {proposal.status === "open" && stale && (
-                <p className="warning">Version {latest} was published after this proposal was made. Check the ledger against the latest version.</p>
+                <p className="warning">Version {latest} was published after this proposal was made. Compare it with the latest version.</p>
               )}
               {counts != null && result != null && (
                 <p className="hint">

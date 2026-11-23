@@ -1590,6 +1590,48 @@ button.link.danger {
   z-index: 5;
 }
 
+/* Group boxes sit under the edges and the nodes. Only the name takes clicks, so a drag on the box still pans the canvas. */
+.react-flow__viewport-portal {
+  z-index: -1;
+}
+
+.group-frame {
+  position: absolute;
+  border: 1.5px dashed var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--chip) 55%, transparent);
+  pointer-events: none;
+}
+
+.group-frame.selected {
+  border-color: var(--accent);
+  border-style: solid;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.group-label {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  max-width: calc(100% - 24px);
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.group-frame.selected .group-label,
+.group-label:hover {
+  color: var(--accent);
+}
+
 /* The four views of a change. */
 .view-tabs {
   display: inline-flex;

@@ -11,6 +11,7 @@ import {
   useInternalNode,
   useNodesState,
   useReactFlow,
+  ViewportPortal,
   type Edge,
   type EdgeProps,
   type Node,
@@ -18,7 +19,7 @@ import {
 } from "@xyflow/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { assignParallelSlots, edgePath, LABEL_STOPS, labelSize, loopPath, placeLabels, pointAlong, routePath, snapRoute, type Box, type Label, type ParallelSlot, type Point } from "../geometry.ts";
-import { NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
+import { GROUP_PADDING, NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
 import type { ChangeStatus, ContentEdge, GraphContent, Position, Vocabulary } from "../model.ts";
 import { termName } from "../vocabulary.ts";
 import { NODE_TYPE_DRAG, NodePalette } from "./node-palette.tsx";
@@ -30,6 +31,21 @@ export type Marks = { nodes: Map<string, ChangeStatus>; edges: Map<string, Chang
 
 // The path of a flow on the canvas: the step numbers of each node on it, and the edges it follows. For a run, the
 // path also has the node of the current step and the nodes and edges that the run did not reach yet.
+// A group as the canvas draws it: a box around its nodes, with its name at the top.
+export type CanvasGroup = { id: string; name: string; description: string; nodeIds: string[] };
+
+// The box of each group around the live positions of its nodes, so a box follows a node while it is dragged.
+const groupFrames = (groups: CanvasGroup[], nodes: EntityNode[]) =>
+  groups.flatMap((group) => {
+    const boxes = nodes.filter(({ id }) => group.nodeIds.includes(id)).map(boxOf);
+    if (boxes.length === 0) return [];
+    const left = Math.min(...boxes.map(({ x }) => x)) - GROUP_PADDING.side;
+    const top = Math.min(...boxes.map(({ y }) => y)) - GROUP_PADDING.top;
+    const right = Math.max(...boxes.map(({ x, width }) => x + width)) + GROUP_PADDING.side;
+    const bottom = Math.max(...boxes.map(({ y, height }) => y + height)) + GROUP_PADDING.bottom;
+    return [{ ...group, x: left, y: top, width: right - left, height: bottom - top }];
+  });
+
 export type FlowPath = { steps: Map<string, number[]>; edges: Set<string>; current?: string; pending?: Set<string> };
 
 type Design = { type: string | null; status: string | null };
@@ -291,6 +307,9 @@ export const GraphCanvas = ({
   onAddNode,
   paletteFooter,
   readOnly = false,
+  groups = [],
+  selectedGroup = null,
+  onSelectGroup,
   children,
 }: {
   view: GraphContent;
@@ -306,6 +325,9 @@ export const GraphCanvas = ({
   onAddNode?: (type: string | null, position: Position) => void;
   paletteFooter?: ReactNode;
   readOnly?: boolean;
+  groups?: CanvasGroup[];
+  selectedGroup?: string | null;
+  onSelectGroup?: (groupId: string) => void;
   children?: ReactNode;
 }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityNode>(toFlowNodes(view, selection, marks, path, focus));
@@ -313,6 +335,7 @@ export const GraphCanvas = ({
   const vocabulary = useVocabulary();
   const [hovered, setHovered] = useState<string | null>(null);
   const { screenToFlowPosition } = useReactFlow();
+  const frames = useMemo(() => groupFrames(groups, nodes), [groups, nodes]);
   const canAdd = onAddNode != null && !readOnly;
   const edges = useMemo(
     () => toFlowEdges(view, nodes, vocabulary, selection, marks, hovered, setHovered, onSelect, routes, path, focus),
@@ -370,6 +393,19 @@ export const GraphCanvas = ({
       <Background gap={20} />
       <Controls showInteractive={false} />
       {canAdd && <NodePalette onAdd={onAddNode} footer={paletteFooter} />}
+      <ViewportPortal>
+        {frames.map((frame) => (
+          <div
+            key={frame.id}
+            className={`group-frame${frame.id === selectedGroup ? " selected" : ""}`}
+            style={{ transform: `translate(${frame.x}px, ${frame.y}px)`, width: frame.width, height: frame.height }}
+          >
+            <button type="button" className="group-label" onClick={() => onSelectGroup?.(frame.id)} title={frame.description === "" ? frame.name : frame.description}>
+              {frame.name}
+            </button>
+          </div>
+        ))}
+      </ViewportPortal>
       {children}
     </ReactFlow>
   );

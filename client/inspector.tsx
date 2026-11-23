@@ -14,9 +14,13 @@ export type InspectorActions = {
   deleteGraph: () => void;
   updateNode: (id: string, patch: NodePatch) => void;
   removeNodeFromGraph: (id: string) => void;
+  setNodeGroup: (id: string, groupId: string | null) => void;
+  createGroupWith: (nodeId: string, name: string) => void;
   updateEdge: (id: string, patch: EdgePatch) => void;
   removeEdgeFromGraph: (id: string) => void;
 };
+
+const NEW_GROUP = "new-group";
 
 const nameOf = (view: GraphView, id: string) => view.nodes.find((node) => node.id === id)?.name ?? id;
 
@@ -60,6 +64,27 @@ const NodeInspector = ({ node, view, actions }: { node: GraphNode; view: GraphVi
         onCommit={(text) => actions.updateNode(node.id, { labels: normalizeLabels(text.split(",")) })}
       />
       <PropertiesField properties={node.properties} onCommit={(properties) => actions.updateNode(node.id, { properties })} />
+      <label className="field">
+        <span>Group</span>
+        <select
+          value={view.nodes.find(({ id }) => id === node.id)?.groupId ?? ""}
+          onChange={(e) => {
+            if (e.target.value !== NEW_GROUP) actions.setNodeGroup(node.id, e.target.value === "" ? null : e.target.value);
+            else {
+              const name = prompt("Name of the new group")?.trim() ?? "";
+              if (name !== "") actions.createGroupWith(node.id, name);
+            }
+          }}
+        >
+          <option value="">No group</option>
+          {view.groups.map((group) => (
+            <option key={group.id} value={group.id}>
+              {group.name}
+            </option>
+          ))}
+          <option value={NEW_GROUP}>New group…</option>
+        </select>
+      </label>
       <p className="hint">{degree} edges in this graph.</p>
       <button type="button" className="danger" onClick={() => actions.removeNodeFromGraph(node.id)}>
         Delete node

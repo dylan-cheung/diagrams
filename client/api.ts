@@ -1,6 +1,6 @@
 import { hc, type ClientResponse } from "hono/client";
 import type { AppType } from "../api.ts";
-import type { ChangeInput, FeedbackInput, DraftState, EdgeInput, FinishInput, FlowInput, GraphInput, GraphPatch, LayoutInput, NodeInput, Position } from "../model.ts";
+import type { ChangeInput, FeedbackInput, DraftState, EdgeInput, FinishInput, FlowInput, GraphInput, GraphPatch, GroupInput, LayoutInput, NodeInput, Position } from "../model.ts";
 
 export class ApiError extends Error {
   constructor(readonly errors: string[]) {
@@ -70,6 +70,12 @@ export const api = {
     unwrap(graphs[":id"].positions.$put({ param: { id }, json: positions })),
   restoreDraft: (id: string, state: DraftState) => unwrap(graphs[":id"].draft.$put({ param: { id }, json: state })),
   setLayout: (id: string, layout: LayoutInput) => unwrap(graphs[":id"].layout.$put({ param: { id }, json: layout })),
+  setNodeGroup: (id: string, nodeId: string, groupId: string | null) =>
+    unwrap(graphs[":id"].nodes[":nodeId"].$patch({ param: { id, nodeId }, json: { groupId } })),
+  createGroup: (id: string, input: GroupInput) => unwrap(graphs[":id"].groups.$post({ param: { id }, json: input })),
+  updateGroup: (id: string, groupId: string, input: Partial<GroupInput>) =>
+    unwrap(graphs[":id"].groups[":groupId"].$patch({ param: { id, groupId }, json: input })),
+  deleteGroup: (id: string, groupId: string) => unwrap(graphs[":id"].groups[":groupId"].$delete({ param: { id, groupId } })),
   createEdgeInGraph: (id: string, input: EdgeInput) => unwrap(graphs[":id"].edges.$post({ param: { id }, json: input })),
   removeEdgeFromGraph: (id: string, edgeId: string) =>
     unwrap(graphs[":id"].edges[":edgeId"].$delete({ param: { id, edgeId } })),

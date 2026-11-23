@@ -6,6 +6,7 @@ import type { FlowStep, Run, GraphContent, GraphEdge, GraphSummary, GraphVersion
 import { ApiError, api } from "./api.ts";
 import { edgeText, GraphCanvas, type Selection } from "./canvas.tsx";
 import { FlowPanel, FlowsSection, pathOf, RunPanel, type FlowActions, type RunActions } from "./flow-panel.tsx";
+import { GroupInspector, GroupsSection, type GroupActions } from "./group-panel.tsx";
 import { GraphFooter, GraphTitle, Inspector, type InspectorActions } from "./inspector.tsx";
 import { MenuButton } from "./menu.tsx";
 import { ProposalReview } from "./review.tsx";
@@ -53,6 +54,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
   const [picked, setPicked] = useState<Shown | null>(null);
   const [loadedVersions, setLoadedVersions] = useState<Record<number, GraphVersion>>({});
   const [selection, setSelection] = useState<Selection>(null);
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [flowId, setFlowId] = useState<string | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
@@ -153,6 +155,21 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
   }, [content, selection]);
 
   const flows = (readOnly ? shownVersion?.view.flows : draft?.flows) ?? [];
+  // The groups of the shown graph, with their nodes, for the canvas and the panel.
+  const groupView = readOnly ? shownVersion?.view : draft;
+  const canvasGroups = useMemo(
+    () =>
+      (groupView?.groups ?? []).map(({ id, name, description }) => ({
+        id,
+        name,
+        description,
+        nodeIds: groupView?.nodes.filter((node) => node.groupId === id).map((node) => node.id) ?? [],
+      })),
+    [groupView],
+  );
+  const groupSizes = useMemo(() => new Map(canvasGroups.map(({ id, nodeIds }) => [id, nodeIds.length])), [canvasGroups]);
+  const group = groupView?.groups.find(({ id }) => id === selectedGroup);
+  const groupMembers = (groupView?.nodes ?? []).filter((node) => node.groupId === group?.id).map(({ id, name }) => ({ id, name }));
   const flow = flows.find(({ id }) => id === flowId);
   const flowRuns = runs.filter((item) => item.flowId === flow?.id);
   const openRun = flowRuns.find(({ id }) => id === runId);
@@ -228,6 +245,22 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
     removeNodeFromGraph: (id) => void change(`Delete "${nodeName(id)}"`, () => api.removeNodeFromGraph(graphId, id)),
     updateEdge: (id, patch) => void change(`Edit ${edgeName(id)}`, () => api.updateEdge(id, patch)),
     removeEdgeFromGraph: (id) => void change(`Delete ${edgeName(id)}`, () => api.removeEdgeFromGraph(graphId, id)),
+    setNodeGroup: (id, groupId) => void run(() => api.setNodeGroup(graphId, id, groupId)),
+    createGroupWith: (nodeId, name) => void run(() => api.createGroup(graphId, { name, nodeIds: [nodeId] })),
+  };
+
+  const openGroup = (groupId: string) => {
+    setSelection(null);
+    setSelectedGroup(groupId);
+  };
+
+  const groupActions: GroupActions = {
+    update: (groupId, patch) => void run(() => api.updateGroup(graphId, groupId, patch)),
+    remove: (groupId) => void run(() => api.deleteGroup(graphId, groupId)).then(() => setSelectedGroup(null)),
+    showNode: (nodeId) => {
+      setSelectedGroup(null);
+      setSelection({ kind: "node", id: nodeId });
+    },
   };
 
   const addNode = async (type: string | null, position: Position) => {
@@ -356,6 +389,7 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
 
   // While a flow is open in the draft, a click on the canvas adds a step instead of a selection.
   const select = (next: Selection) => {
+    setSelectedGroup(null);
     if (flow == null) {
       setSelection(next);
     } else if (readOnly) {
@@ -452,6 +486,9 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
                 selection={selection}
                 onSelect={onSelect}
                 path={path}
+                groups={canvasGroups}
+                selectedGroup={selectedGroup}
+                onSelectGroup={(groupId) => flow == null && openGroup(groupId)}
                 onMove={move}
                 onConnect={(source, target) => void connect(source, target)}
                 onRemove={remove}
@@ -581,12 +618,19 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
               actions={flowActions}
             />
           )}
-          {flow == null && !readOnly && draft != null && draftContent != null && (
+          {flow == null && group != null && <GroupInspector group={group} members={groupMembers} readOnly={readOnly} actions={groupActions} />}
+          {flow == null && group == null && !readOnly && draft != null && draftContent != null && (
             <>
               <Inspector view={draft} selection={selection} actions={actions} />
               {selection == null && (
                 <>
                   <FlowsSection flows={flows} content={draftContent} onOpen={openFlow} onCreate={(name) => void createFlow(name)} />
+                  <GroupsSection
+                    groups={draft.groups}
+                    sizes={groupSizes}
+                    onOpen={openGroup}
+                    onCreate={(input) => void run(() => api.createGroup(graphId, input)).then((created) => created != null && openGroup(created.id))}
+                  />
                   {sections}
                   <HistorySection history={history} undoKey={UNDO_KEY} redoKey={REDO_KEY} onGo={(index) => void goToHistory(index)} disabled={saving > 0} />
                   <GraphFooter view={draft} />
@@ -594,9 +638,10 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
               )}
             </>
           )}
-          {flow == null && readOnly && viewContent != null && (
+          {flow == null && group == null && readOnly && viewContent != null && (
             <VersionPanel graphId={graphId} content={viewContent} selection={selection} onSelect={setSelection}>
               <FlowsSection flows={flows} content={viewContent} onOpen={openFlow} />
+              <GroupsSection groups={groupView?.groups ?? []} sizes={groupSizes} onOpen={openGroup} />
               {sections}
             </VersionPanel>
           )}

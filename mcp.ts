@@ -6,7 +6,7 @@ const PROTOCOL_VERSION = "2025-06-18";
 
 export const INSTRUCTIONS = [
   "Diagram is the user's local app for graphs of systems and features, and for reviewing code changes. It runs at http://127.0.0.1:4848.",
-  "- A graph holds nodes and edges. Each node and edge can have a type, a status, a description (what it is) and an intent (why it exists); get_vocabulary lists the types and statuses. A flow is one path through a graph, step by step. Publish saves a version that does not change.",
+  "- A graph holds nodes and edges. Each node and edge can have a type, a status, a description (what it is) and an intent (why it exists); get_vocabulary lists the types and statuses. A flow is one path through a graph, step by step. A group is a named box with a description that holds a set of the nodes of one graph, for example the parts that one file defines; each node has the groupId of its group. Publish saves a version that does not change.",
   "- A change shows one code change in four views: the idea (notes and points), the concepts (a graph), the pseudocode (blocks by layer) and the code (the diff of a git branch). Trace links connect each item to the items in the next view that carry it out. Feedback is a list of notes that the user writes while reviewing a change.",
   "- To change a graph that already has content, prefer create_proposal: the user reviews the proposal in Diagram before it changes the graph. Build a new graph directly with create_graph, add_node and add_edge.",
   "- Give the user links to what you made or changed: http://127.0.0.1:4848/graphs/<graph id> for a graph, and http://127.0.0.1:4848/changes/<change id>/idea for a change (or /concepts, /pseudocode, /code).",
@@ -23,6 +23,10 @@ const ROUTES: { name: string; method: "get" | "post" | "patch" | "put" | "delete
   { name: "add_node", method: "post", path: "/api/graphs/{id}/nodes" },
   { name: "update_node", method: "patch", path: "/api/nodes/{id}" },
   { name: "remove_node_from_graph", method: "delete", path: "/api/graphs/{id}/nodes/{nodeId}" },
+  { name: "set_node_group", method: "patch", path: "/api/graphs/{id}/nodes/{nodeId}" },
+  { name: "create_group", method: "post", path: "/api/graphs/{id}/groups" },
+  { name: "update_group", method: "patch", path: "/api/graphs/{id}/groups/{groupId}" },
+  { name: "delete_group", method: "delete", path: "/api/graphs/{id}/groups/{groupId}" },
   { name: "add_edge", method: "post", path: "/api/graphs/{id}/edges" },
   { name: "update_edge", method: "patch", path: "/api/edges/{id}" },
   { name: "remove_edge_from_graph", method: "delete", path: "/api/graphs/{id}/edges/{edgeId}" },

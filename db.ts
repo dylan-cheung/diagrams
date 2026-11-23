@@ -26,6 +26,8 @@ import {
   type FlowInput,
   type FlowStep,
   type Graph,
+  type Group,
+  type GroupInput,
   type GraphContent,
   type GraphEdge,
   type GraphInput,
@@ -98,7 +100,18 @@ type RunRow = {
   updated_at: string;
 };
 
-type PlacedNodeRow = NodeRow & { x: number | null; y: number | null };
+type PlacedNodeRow = NodeRow & { x: number | null; y: number | null; group_id: string | null };
+
+type GroupRow = { id: string; graph_id: string; name: string; description: string; created_at: string; updated_at: string };
+
+const toGroup = (row: GroupRow): Group => ({
+  id: row.id,
+  graphId: row.graph_id,
+  name: row.name,
+  description: row.description,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
 
 type ProposalRow = {
   id: string;
@@ -266,7 +279,7 @@ const sortKeys = (properties: Properties) => Object.fromEntries(Object.entries(p
 
 const byId = <T extends { id: string }>(items: T[]) => [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
-export const contentHash = ({ graph, nodes, edges, flows }: GraphView) =>
+export const contentHash = ({ graph, nodes, edges, flows, groups }: GraphView) =>
   createHash("sha256")
     .update(
       JSON.stringify({
@@ -275,6 +288,9 @@ export const contentHash = ({ graph, nodes, edges, flows }: GraphView) =>
         nodes: byId(nodes).map((n) => [n.id, n.name, n.description, n.labels, sortKeys(n.properties), ...designOf(NODE_DESIGN_DEFAULTS, n)]),
         edges: byId(edges).map((e) => [e.id, e.source, e.target, e.directed, e.label, sortKeys(e.properties), ...designOf(EDGE_DESIGN_DEFAULTS, e)]),
         ...(flows.length > 0 && { flows: byId(flows).map((f) => [f.id, f.name, f.description, f.steps.map((step) => [step.nodeId, step.edgeId])]) }),
+        ...(groups.length > 0 && {
+          groups: byId(groups).map((g) => [g.id, g.name, g.description, byId(nodes.filter((n) => n.groupId === g.id)).map((n) => n.id)]),
+        }),
       }),
     )
     .digest("hex");
@@ -316,6 +332,15 @@ CREATE TABLE IF NOT EXISTS graphs (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS node_groups (
+  id TEXT PRIMARY KEY,
+  graph_id TEXT NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS node_groups_graph ON node_groups(graph_id);
 CREATE TABLE IF NOT EXISTS graph_nodes (
   graph_id TEXT NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
   node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
@@ -412,6 +437,7 @@ const ADDED_COLUMNS: [string, string, string][] = [
   ["edges", "intent", "TEXT NOT NULL DEFAULT ''"],
   ["edges", "status", "TEXT"],
   ["graph_edges", "route", "TEXT"],
+  ["graph_nodes", "group_id", "TEXT REFERENCES node_groups(id) ON DELETE SET NULL"],
 ];
 
 export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VOCABULARY) => {
@@ -636,6 +662,8 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     dropOrphanNode(nodeId);
   };
 
+  const groupsOf = db.query<GroupRow, { graphId: string }>("SELECT * FROM node_groups WHERE graph_id = $graphId ORDER BY created_at, rowid");
+  const groupById = db.query<GroupRow, { id: string; graphId: string }>("SELECT * FROM node_groups WHERE id = $id AND graph_id = $graphId");
   const flowsOf = db.query<FlowRow, { graphId: string }>("SELECT * FROM flows WHERE graph_id = $graphId ORDER BY created_at, rowid");
   const flowById = db.query<FlowRow, { id: string; graphId: string }>("SELECT * FROM flows WHERE id = $id AND graph_id = $graphId");
 
@@ -643,17 +671,47 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
     const graph = requireGraph(graphId);
     const nodes = db
       .query<PlacedNodeRow, { graphId: string }>(
-        "SELECT n.*, gn.x, gn.y FROM graph_nodes gn JOIN nodes n ON n.id = gn.node_id WHERE gn.graph_id = $graphId ORDER BY n.created_at, n.rowid",
+        "SELECT n.*, gn.x, gn.y, gn.group_id FROM graph_nodes gn JOIN nodes n ON n.id = gn.node_id WHERE gn.graph_id = $graphId ORDER BY n.created_at, n.rowid",
       )
       .all({ graphId })
-      .map((row) => ({ ...toNode(row), position: row.x == null || row.y == null ? null : { x: row.x, y: row.y } }));
+      .map((row) => ({ ...toNode(row), position: row.x == null || row.y == null ? null : { x: row.x, y: row.y }, groupId: row.group_id }));
     const edges = db
       .query<EdgeRow & { route: string | null }, { graphId: string }>(
         "SELECT e.*, ge.route FROM graph_edges ge JOIN edges e ON e.id = ge.edge_id WHERE ge.graph_id = $graphId ORDER BY e.created_at, e.rowid",
       )
       .all({ graphId })
       .map((row) => ({ ...toEdge(row), route: row.route == null ? null : (JSON.parse(row.route) as Position[]) }));
-    return { graph, nodes, edges, flows: flowsOf.all({ graphId }).map(toFlow) };
+    return { graph, nodes, edges, flows: flowsOf.all({ graphId }).map(toFlow), groups: groupsOf.all({ graphId }).map(toGroup) };
+  };
+
+  const requireGroup = (graphId: string, groupId: string) => {
+    const row = groupById.get({ id: groupId, graphId });
+    if (row == null) throw new StoreError("The group does not exist in this graph.", 404);
+    return toGroup(row);
+  };
+
+  const setGroupOf = db.query("UPDATE graph_nodes SET group_id = $groupId WHERE graph_id = $graphId AND node_id = $nodeId");
+
+  const putInGroup = (graphId: string, nodeId: string, groupId: string | null) => {
+    if (groupId != null) requireGroup(graphId, groupId);
+    if (membership.get({ graphId, nodeId }) == null) throw new StoreError(`The node ${nodeId} is not in the graph.`, 400);
+    setGroupOf.run({ graphId, nodeId, groupId });
+  };
+
+  // Saves a group. With nodeIds, those nodes become all of its nodes: they leave other groups, and its other nodes leave it.
+  const saveGroup = (graphId: string, id: string, input: Partial<GroupInput>, before: Group | null) => {
+    const stamp = now();
+    db.query(
+      `INSERT INTO node_groups (id, graph_id, name, description, created_at, updated_at)
+       VALUES ($id, $graphId, $name, $description, $stamp, $stamp)
+       ON CONFLICT(id) DO UPDATE SET name = $name, description = $description, updated_at = $stamp`,
+    ).run({ id, graphId, name: input.name?.trim() ?? before?.name ?? "", description: input.description?.trim() ?? before?.description ?? "", stamp });
+    if (input.nodeIds != null) {
+      db.query("UPDATE graph_nodes SET group_id = NULL WHERE graph_id = $graphId AND group_id = $id").run({ graphId, id });
+      for (const nodeId of input.nodeIds) putInGroup(graphId, nodeId, id);
+    }
+    touchGraph(graphId);
+    return requireGroup(graphId, id);
   };
 
   const latestVersion = db.query<VersionRow & { snapshot: string }, { graphId: string }>(
@@ -669,9 +727,10 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       ...toVersionSummary(row),
       view: {
         ...snapshot,
-        nodes: snapshot.nodes.map((node) => ({ ...NODE_DESIGN_DEFAULTS, ...node })),
+        nodes: snapshot.nodes.map((node) => ({ ...NODE_DESIGN_DEFAULTS, ...node, groupId: node.groupId ?? null })),
         edges: snapshot.edges.map((edge) => ({ ...EDGE_DESIGN_DEFAULTS, ...edge, route: edge.route ?? null })),
         flows: snapshot.flows ?? [],
+        groups: snapshot.groups ?? [],
       },
     };
   };
@@ -1222,11 +1281,30 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
       detachNode(graphId, nodeId);
       touchGraph(graphId);
     }),
-    createNodeInGraph: db.transaction((graphId: string, input: NodeInput, position: Position | null) => {
+    createNodeInGraph: db.transaction((graphId: string, input: NodeInput, position: Position | null, groupId: string | null = null) => {
       requireGraph(graphId);
+      if (groupId != null) requireGroup(graphId, groupId);
       const node = createNode(input);
       placeNode(graphId, node.id, position, false);
+      if (groupId != null) putInGroup(graphId, node.id, groupId);
       return node;
+    }),
+    setNodeGroup: db.transaction((graphId: string, nodeId: string, groupId: string | null) => {
+      requireGraph(graphId);
+      putInGroup(graphId, nodeId, groupId);
+      touchGraph(graphId);
+      return view(graphId);
+    }),
+    createGroup: db.transaction((graphId: string, input: GroupInput) => {
+      requireGraph(graphId);
+      return saveGroup(graphId, crypto.randomUUID(), input, null);
+    }),
+    updateGroup: db.transaction((graphId: string, groupId: string, input: Partial<GroupInput>) => saveGroup(graphId, groupId, input, requireGroup(graphId, groupId))),
+    deleteGroup: db.transaction((graphId: string, groupId: string) => {
+      requireGroup(graphId, groupId);
+      db.query("UPDATE graph_nodes SET group_id = NULL WHERE graph_id = $graphId AND group_id = $groupId").run({ graphId, groupId });
+      db.query("DELETE FROM node_groups WHERE id = $groupId").run({ groupId });
+      touchGraph(graphId);
     }),
     addEdgeToGraph: db.transaction((graphId: string, edgeId: string) => includeEdge(graphId, edgeId)),
     createEdgeInGraph: db.transaction((graphId: string, input: EdgeInput) => {

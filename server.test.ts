@@ -206,6 +206,8 @@ describe("API docs", () => {
       "/api/graphs/{id}/edges/{edgeId}",
       "/api/graphs/{id}/flows",
       "/api/graphs/{id}/flows/{flowId}",
+      "/api/graphs/{id}/groups",
+      "/api/graphs/{id}/groups/{groupId}",
       "/api/graphs/{id}/layout",
       "/api/graphs/{id}/nodes",
       "/api/graphs/{id}/nodes/{nodeId}",

@@ -22,6 +22,8 @@ export type {
   FlowInput,
   FlowStep,
   Graph,
+  Group,
+  GroupInput,
   GraphEdge,
   GraphContent,
   GraphDiff,

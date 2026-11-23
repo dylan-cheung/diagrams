@@ -28,6 +28,10 @@ import {
   GraphSummary,
   GraphVersion,
   GraphVersionSummary,
+  Group,
+  GroupInput,
+  GroupPatch,
+  NodeInGraphPatch,
   GraphView,
   LayoutInput,
   Node,
@@ -68,6 +72,7 @@ const FlowParams = z.object({ id: pathParam("id"), flowId: pathParam("flowId") }
 const RunParams = z.object({ id: pathParam("id"), runId: pathParam("runId") });
 const RunsQuery = z.object({ flowId: z.string().optional().openapi({ param: { name: "flowId", in: "query" }, description: "Only the runs of this flow." }) });
 const FeedbackParams = z.object({ id: pathParam("id"), noteId: pathParam("noteId") });
+const GroupParams = z.object({ id: pathParam("id"), groupId: pathParam("groupId") });
 const GraphEdgeParams = z.object({ id: pathParam("id"), edgeId: pathParam("edgeId") });
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({
@@ -79,7 +84,7 @@ const body = <T extends z.ZodType>(schema: T) => ({ body: { content: { "applicat
 
 const errors = {
   400: json(ErrorBody, "The request is not valid."),
-  404: json(ErrorBody, "A graph, node, edge, flow, run, proposal, change or note in the path does not exist."),
+  404: json(ErrorBody, "A graph, node, edge, group, flow, run, proposal, change or note in the path does not exist."),
   409: json(ErrorBody, "The graph name is already used, the proposal is not open, or the run cannot change."),
 };
 
@@ -88,7 +93,7 @@ const noContent = { 204: { description: "Done." } };
 const route = <const T extends Parameters<typeof createRoute>[0]>(config: T) =>
   createRoute({ ...config, responses: { ...errors, ...config.responses } });
 
-const tag = { vocabulary: ["Vocabulary"], nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], flows: ["Flows"], runs: ["Runs"], proposals: ["Proposals"], changes: ["Changes"] };
+const tag = { vocabulary: ["Vocabulary"], nodes: ["Nodes"], edges: ["Edges"], graphs: ["Graphs"], membership: ["Graph membership"], versions: ["Graph versions"], flows: ["Flows"], groups: ["Groups"], runs: ["Runs"], proposals: ["Proposals"], changes: ["Changes"] };
 
 export const createApi = (store: GraphStore) => {
   const app = new OpenAPIHono({
@@ -250,8 +255,59 @@ export const createApi = (store: GraphStore) => {
         responses: { 200: json(Node, "The new node.") },
       }),
       (c) => {
-        const { position, ...input } = c.req.valid("json");
-        return c.json(store.createNodeInGraph(c.req.valid("param").id, input, position ?? null), 200);
+        const { position, groupId, ...input } = c.req.valid("json");
+        return c.json(store.createNodeInGraph(c.req.valid("param").id, input, position ?? null, groupId ?? null), 200);
+      },
+    )
+    .openapi(
+      route({
+        method: "patch",
+        path: "/api/graphs/{id}/nodes/{nodeId}",
+        tags: tag.membership,
+        summary: "Put a node in a group of a graph",
+        description: "Sets the group of the node in this graph only. A node is in at most one group of a graph. Set groupId to null to take it out of its group.",
+        request: { params: GraphNodeParams, ...body(NodeInGraphPatch) },
+        responses: { 200: json(GraphView, "The updated graph.") },
+      }),
+      (c) => {
+        const { id, nodeId } = c.req.valid("param");
+        return c.json(store.setNodeGroup(id, nodeId, c.req.valid("json").groupId), 200);
+      },
+    )
+    .openapi(
+      route({
+        method: "post",
+        path: "/api/graphs/{id}/groups",
+        tags: tag.groups,
+        summary: "Add a group to a graph",
+        description:
+          "A group is a named box with a description that holds a set of the nodes of one graph, for example the parts that one file defines. Give nodeIds to put nodes in it; a node that is in another group moves. GET /api/graphs/{id} returns the groups, and each node has its groupId.",
+        request: { params: IdParams, ...body(GroupInput) },
+        responses: { 200: json(Group, "The new group.") },
+      }),
+      (c) => c.json(store.createGroup(c.req.valid("param").id, c.req.valid("json")), 200),
+    )
+    .openapi(
+      route({
+        method: "patch",
+        path: "/api/graphs/{id}/groups/{groupId}",
+        tags: tag.groups,
+        summary: "Change a group",
+        description: "Omitted fields keep their value. nodeIds replaces all the nodes of the group.",
+        request: { params: GroupParams, ...body(GroupPatch) },
+        responses: { 200: json(Group, "The changed group.") },
+      }),
+      (c) => {
+        const { id, groupId } = c.req.valid("param");
+        return c.json(store.updateGroup(id, groupId, c.req.valid("json")), 200);
+      },
+    )
+    .openapi(
+      route({ method: "delete", path: "/api/graphs/{id}/groups/{groupId}", tags: tag.groups, summary: "Delete a group", description: "Its nodes stay in the graph, in no group.", request: { params: GroupParams }, responses: noContent }),
+      (c) => {
+        const { id, groupId } = c.req.valid("param");
+        store.deleteGroup(id, groupId);
+        return c.body(null, 204);
       },
     )
     .openapi(
@@ -752,7 +808,7 @@ export const createApi = (store: GraphStore) => {
       title: "Diagram API",
       version: "4.4.0",
       description:
-        "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A flow is a sequence of steps through a graph: one specific path, such as an edge case of a feature. A run is one instance of a flow on a published version. A published version is a copy of a graph, with its flows, that does not change. A proposal is a proposed graph that you compare with a version before you apply it. A change is one code change in four views (idea, concepts, pseudocode and code) with trace links between them. The Guide page of the app (/guide) explains each part.",
+        "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A group is a named box that holds a set of the nodes of one graph. A flow is a sequence of steps through a graph: one specific path, such as an edge case of a feature. A run is one instance of a flow on a published version. A published version is a copy of a graph, with its flows, that does not change. A proposal is a proposed graph that you compare with a version before you apply it. A change is one code change in four views (idea, concepts, pseudocode and code) with trace links between them. The Guide page of the app (/guide) explains each part.",
     },
   };
   app.doc31("/openapi.json", doc);

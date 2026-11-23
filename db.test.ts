@@ -663,6 +663,42 @@ describe("restore the draft", () => {
   });
 });
 
+describe("groups", () => {
+  test("a group holds nodes of one graph, a node is in one group, and deleting the group keeps the nodes", () => {
+    const one = store.createGraph({ name: "setup", description: "Test graph." }).id;
+    const two = store.createGraph({ name: "other", description: "Test graph." }).id;
+    const a = store.createNodeInGraph(one, { name: "A" }, null).id;
+    const b = store.createNodeInGraph(one, { name: "B" }, null).id;
+    store.addNodeToGraph(two, a, null);
+    const before = contentHash(store.view(one));
+
+    const rules = store.createGroup(one, { name: " CLAUDE.md ", description: "Rules for every project.", nodeIds: [a, b] });
+    const groupOf = (graph: string, id: string) => store.view(graph).nodes.find((node) => node.id === id)?.groupId;
+    expect(rules.name).toBe("CLAUDE.md");
+    expect([groupOf(one, a), groupOf(one, b), groupOf(two, a)]).toEqual([rules.id, rules.id, null]);
+    expect(contentHash(store.view(one))).not.toBe(before);
+
+    const skills = store.createGroup(one, { name: "Skills", nodeIds: [b] });
+    expect([groupOf(one, a), groupOf(one, b)]).toEqual([rules.id, skills.id]);
+    store.setNodeGroup(one, a, null);
+    expect(groupOf(one, a)).toBeNull();
+    const c = store.createNodeInGraph(one, { name: "C" }, null, rules.id).id;
+    expect(groupOf(one, c)).toBe(rules.id);
+
+    expect(() => store.createGroup(one, { name: "Bad", nodeIds: ["nope"] })).toThrow("The node nope is not in the graph.");
+    expect(() => store.setNodeGroup(two, a, rules.id)).toThrow("The group does not exist in this graph.");
+    expect(store.updateGroup(one, skills.id, { description: "Personal skills." }).name).toBe("Skills");
+
+    store.publish(one);
+    store.deleteGroup(one, rules.id);
+    expect(groupOf(one, c)).toBeNull();
+    expect(store.view(one).groups.map(({ name }) => name)).toEqual(["Skills"]);
+    const version = store.getVersion(one, "latest").view;
+    expect(version.groups.map(({ name }) => name)).toEqual(["CLAUDE.md", "Skills"]);
+    expect(version.nodes.find((node) => node.id === c)?.groupId).toBe(rules.id);
+  });
+});
+
 describe("changes", () => {
   test("a change keeps its items and the links between next views", () => {
     const graph = store.createGraph({ name: "concepts", description: "Test graph." }).id;

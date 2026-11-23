@@ -110,7 +110,24 @@ export const GraphSummary = Graph.extend({
   openProposals: z.number().int().openapi({ description: "The number of open proposals." }),
 }).openapi("GraphSummary");
 
-export const PlacedNode = Node.extend({ position: Position.nullable() }).openapi("PlacedNode");
+export const PlacedNode = Node.extend({
+  position: Position.nullable(),
+  groupId: Id.nullable().openapi({ description: "The group of the node in this graph, or null when it is in no group." }),
+}).openapi("PlacedNode");
+
+export const Group = z
+  .object({
+    id: Id,
+    graphId: Id,
+    name: z.string().openapi({ example: "~/.claude/CLAUDE.md" }),
+    description: z.string().openapi({ example: "The rules that every Claude session loads, in every project." }),
+    createdAt: Timestamp,
+    updatedAt: Timestamp,
+  })
+  .openapi("Group", {
+    description:
+      "A named box in one graph that holds a set of its nodes, for example the parts that one file defines. A node is in at most one group of a graph. The nodes of a group have its id as groupId.",
+  });
 
 export const Route = z.array(Position).nullable().openapi("Route", {
   description:
@@ -145,7 +162,7 @@ export const Flow = z
   .openapi("Flow", { description: "A sequence of steps through the graph: one specific path, for example the main path of a feature or an edge case." });
 
 export const GraphView = z
-  .object({ graph: Graph, nodes: z.array(PlacedNode), edges: z.array(PlacedEdge), flows: z.array(Flow) })
+  .object({ graph: Graph, nodes: z.array(PlacedNode), edges: z.array(PlacedEdge), flows: z.array(Flow), groups: z.array(Group) })
   .openapi("GraphView");
 
 export const GraphVersionSummary = z
@@ -175,7 +192,27 @@ export const NodeInput = z
 
 export const NodePatch = NodeInput.partial().openapi("NodePatch");
 
-export const NodeInGraphInput = NodeInput.extend({ position: Position.nullable().optional() }).openapi("NodeInGraphInput");
+export const NodeInGraphInput = NodeInput.extend({
+  position: Position.nullable().optional(),
+  groupId: z.string().min(1).nullable().optional().openapi({ description: "The id of a group of this graph to put the node in." }),
+}).openapi("NodeInGraphInput");
+
+export const NodeInGraphPatch = z
+  .object({ groupId: z.string().min(1).nullable().openapi({ description: "The id of a group of this graph, or null to take the node out of its group." }) })
+  .openapi("NodeInGraphPatch");
+
+export const GroupInput = z
+  .object({
+    name: Name("A group needs a name."),
+    description: z.string().optional().openapi({ example: "The rules that every Claude session loads, in every project." }),
+    nodeIds: z
+      .array(z.string().min(1))
+      .optional()
+      .openapi({ description: "The nodes of the group. On a change, it replaces all of them. A node that was in another group of this graph moves to this one." }),
+  })
+  .openapi("GroupInput");
+
+export const GroupPatch = GroupInput.partial().openapi("GroupPatch");
 
 export const EdgeInput = z
   .object({
@@ -568,6 +605,8 @@ export type LayoutInput = z.infer<typeof LayoutInput>;
 export type DraftState = z.infer<typeof DraftState>;
 export type GraphView = z.infer<typeof GraphView>;
 export type Flow = z.infer<typeof Flow>;
+export type Group = z.infer<typeof Group>;
+export type GroupInput = z.infer<typeof GroupInput>;
 export type FlowStep = z.infer<typeof FlowStep>;
 export type FlowInput = z.infer<typeof FlowInput>;
 export type Run = z.infer<typeof Run>;

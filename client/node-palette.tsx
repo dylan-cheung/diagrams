@@ -1,5 +1,5 @@
 import { Panel, useReactFlow, useStore } from "@xyflow/react";
-import type { DragEvent, ReactNode } from "react";
+import { useState, type DragEvent, type ReactNode } from "react";
 import { NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
 import type { Position } from "../model.ts";
 import { useEnabledLibraries, useVocabulary } from "./vocabulary.ts";
@@ -81,11 +81,28 @@ const Icon = ({ id, name }: { id: string | null; name: string }) => {
   );
 };
 
-// A bar on the left of the canvas with one button for each node type. Drag a button onto the canvas to add a node of
-// that type there, or click it to add the node in the middle of the view.
+const LIBRARY_ICON = (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m12 3 9 5-9 5-9-5 9-5Z" />
+    <path d="m3 13 9 5 9-5" />
+  </svg>
+);
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter((word) => word !== "")
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("")
+    .slice(0, 2);
+
+// A bar on the left of the canvas with one button for each library that the graph uses, and the node without a type.
+// A click on a library opens its node types beside the bar. Drag a type onto the canvas to add a node of that type
+// there, or click it to add the node in the middle of the view.
 export const NodePalette = ({ onAdd, footer }: { onAdd: (type: string | null, position: Position) => void; footer?: ReactNode }) => {
   const vocabulary = useVocabulary();
   const enabled = useEnabledLibraries();
+  const [open, setOpen] = useState<string | null>(null);
   const { getViewport, getNodes } = useReactFlow();
   const width = useStore((state) => state.width);
   const height = useStore((state) => state.height);
@@ -100,44 +117,84 @@ export const NodePalette = ({ onAdd, footer }: { onAdd: (type: string | null, po
     return place;
   };
 
-  // One part for each library that the graph uses, and the node without a type (the General library) at the end.
-  const parts = [
-    ...(enabled ?? [{ id: "all", name: "", nodeTypes: vocabulary.nodeTypes }])
-      .filter(({ nodeTypes }) => nodeTypes.length > 0)
-      .map(({ id, name, nodeTypes }) => ({ id, name, items: nodeTypes.map((term) => ({ id: term.id as string | null, name: term.name, within: term.within })) })),
-    { id: "general", name: "General", items: [{ id: null as string | null, name: "Node without a type", within: [] as string[] }] },
-  ];
+  const libraries = (enabled ?? [{ id: "all", name: "Node types", description: "", nodeTypes: vocabulary.nodeTypes }]).filter(({ nodeTypes }) => nodeTypes.length > 0);
   const typeName = (id: string) => vocabulary.nodeTypes.find((term) => term.id === id)?.name ?? id;
+  const startDrag = (id: string | null) => (event: DragEvent) => {
+    event.dataTransfer.setData(NODE_TYPE_DRAG, id ?? "");
+    event.dataTransfer.effectAllowed = "copy";
+  };
 
   return (
     <Panel position="center-left" className="palette-stack">
-      <div className="palette" role="group" aria-label="Add a node">
-        {parts.map((part, index) => (
-          <div key={part.id} className="palette-part" role="group" aria-label={part.name === "" ? undefined : part.name}>
-            {index > 0 && <span className="palette-divider" title={part.name} />}
-            {part.items.map(({ id, name, within }) => (
-              <button
-                key={id ?? ""}
-                type="button"
-                className={`palette-item${id == null ? "" : ` type-${id}`}${within.length > 0 ? " second-tier" : ""}`}
-                title={
-                  within.length > 0
-                    ? `${name} (${part.name}): drop it onto a ${within.map(typeName).join(", ")}, or select one and click`
-                    : `${name}${part.name === "" ? "" : ` (${part.name})`}: drag onto the canvas, or click to add`
-                }
-                aria-label={`Add ${name}`}
-                draggable
-                onDragStart={(event: DragEvent) => {
-                  event.dataTransfer.setData(NODE_TYPE_DRAG, id ?? "");
-                  event.dataTransfer.effectAllowed = "copy";
-                }}
-                onClick={() => onAdd(id, freePlaceInView())}
-              >
-                <Icon id={id} name={name} />
-              </button>
-            ))}
+      <div
+        className="palette"
+        role="group"
+        aria-label="Add a node"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setOpen(null);
+        }}
+      >
+        {libraries.map((library) => (
+          <div key={library.id} className="palette-part">
+            <button
+              type="button"
+              className={`palette-library${open === library.id ? " open" : ""}`}
+              title={`${library.name}: ${library.nodeTypes.length} node types. Click to show them.`}
+              aria-label={library.name}
+              aria-expanded={open === library.id}
+              onClick={() => setOpen(open === library.id ? null : library.id)}
+            >
+              {LIBRARY_ICON}
+              <span className="palette-library-name">{initials(library.name)}</span>
+            </button>
+            {open === library.id && (
+              <div className="palette-flyout" role="group" aria-label={library.name}>
+                <div className="palette-flyout-head">
+                  <strong>{library.name}</strong>
+                  <button type="button" className="icon" aria-label="Close" onClick={() => setOpen(null)}>
+                    ×
+                  </button>
+                </div>
+                {library.nodeTypes.map(({ id, name, within }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`palette-row type-${id}${within.length > 0 ? " second-tier" : ""}`}
+                    title={
+                      within.length > 0
+                        ? `${name}: drop it onto a ${within.map(typeName).join(", ")}, or select one and click`
+                        : `${name}: drag onto the canvas, or click to add`
+                    }
+                    aria-label={`Add ${name}`}
+                    draggable
+                    onDragStart={startDrag(id)}
+                    onClick={() => onAdd(id, freePlaceInView())}
+                  >
+                    <span className={`palette-item type-${id}${within.length > 0 ? " second-tier" : ""}`}>
+                      <Icon id={id} name={name} />
+                    </span>
+                    <span className="palette-row-text">
+                      {name}
+                      {within.length > 0 && <small>within {within.length > 2 ? "a part" : within.map(typeName).join(" or ")}</small>}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ))}
+        {libraries.length > 0 && <span className="palette-divider" />}
+        <button
+          type="button"
+          className="palette-item"
+          title="Node without a type (General): drag onto the canvas, or click to add"
+          aria-label="Add Node without a type"
+          draggable
+          onDragStart={startDrag(null)}
+          onClick={() => onAdd(null, freePlaceInView())}
+        >
+          <Icon id={null} name="Node without a type" />
+        </button>
       </div>
       {footer}
     </Panel>

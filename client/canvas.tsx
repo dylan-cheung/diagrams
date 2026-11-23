@@ -10,6 +10,7 @@ import {
   ReactFlow,
   useInternalNode,
   useNodesState,
+  useStore,
   useReactFlow,
   ViewportPortal,
   type Edge,
@@ -17,7 +18,7 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { assignParallelSlots, edgePath, LABEL_STOPS, labelSize, loopPath, placeLabels, pointAlong, routePath, snapRoute, type Box, type Label, type ParallelSlot, type Point } from "../geometry.ts";
 import { GROUP_PADDING, NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
 import type { ChangeStatus, ContentEdge, GraphContent, Position, Vocabulary } from "../model.ts";
@@ -31,6 +32,9 @@ export type Marks = { nodes: Map<string, ChangeStatus>; edges: Map<string, Chang
 
 // The path of a flow on the canvas: the step numbers of each node on it, and the edges it follows. For a run, the
 // path also has the node of the current step and the nodes and edges that the run did not reach yet.
+// The number of group colors in styles.css (--group-1 to --group-6). Groups take them in order.
+const GROUP_COLORS = 6;
+
 // A group as the canvas draws it: a box around its nodes, with its name at the top.
 export type CanvasGroup = { id: string; name: string; description: string; nodeIds: string[] };
 
@@ -336,6 +340,8 @@ export const GraphCanvas = ({
   const [hovered, setHovered] = useState<string | null>(null);
   const { screenToFlowPosition } = useReactFlow();
   const frames = useMemo(() => groupFrames(groups, nodes), [groups, nodes]);
+  // Below 100%, the name and the border of a group keep their size on the screen, so a zoomed-out graph still shows them.
+  const grow = useStore((state) => Math.max(1, 1 / state.transform[2]));
   const canAdd = onAddNode != null && !readOnly;
   const edges = useMemo(
     () => toFlowEdges(view, nodes, vocabulary, selection, marks, hovered, setHovered, onSelect, routes, path, focus),
@@ -398,7 +404,15 @@ export const GraphCanvas = ({
           <div
             key={frame.id}
             className={`group-frame${frame.id === selectedGroup ? " selected" : ""}`}
-            style={{ transform: `translate(${frame.x}px, ${frame.y}px)`, width: frame.width, height: frame.height }}
+            style={
+              {
+                transform: `translate(${frame.x}px, ${frame.y}px)`,
+                width: frame.width,
+                height: frame.height,
+                "--group-color": `var(--group-${(groups.findIndex(({ id }) => id === frame.id) % GROUP_COLORS) + 1})`,
+                "--grow": grow,
+              } as CSSProperties
+            }
           >
             <button type="button" className="group-label" onClick={() => onSelectGroup?.(frame.id)} title={frame.description === "" ? frame.name : frame.description}>
               {frame.name}

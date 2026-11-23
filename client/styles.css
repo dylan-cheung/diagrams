@@ -2103,7 +2103,7 @@ button.link.broken {
 
 /* Libraries: the palette has one part for each library that the graph uses. */
 .palette {
-  max-height: calc(100vh - 220px);
+  max-height: calc(100vh - 340px);
   overflow-y: auto;
 }
 
@@ -2239,6 +2239,10 @@ button.link.broken {
 
 .term-table td:nth-child(2) {
   width: 18%;
+}
+
+.term-table td:nth-child(3) {
+  width: 44%;
 }
 
 .term-table input,

@@ -142,6 +142,15 @@ The API docs are generated from the code. With the app running, open:
 
 Each route in `api.ts` is defined with the Zod schemas in `schemas.ts`. The same schemas validate requests, give the TypeScript types, generate the spec, and type the browser client (`hono/client`), so the docs cannot drift from the code. The docs page loads the Scalar viewer from a CDN, so it needs an internet connection.
 
+## MCP server
+
+Diagram serves an MCP server for Claude at http://127.0.0.1:4848/mcp (Streamable HTTP, JSON responses, `mcp.ts`). Its instructions tell Claude what Diagram is, and its tools read and edit graphs, flows, proposals, changes and feedback.
+
+- Each tool is one API route, listed in `ROUTES` in `mcp.ts`. The tool calls the route in the same process, so the route validates the input and gives the errors. The input schema of each tool comes from the OpenAPI spec of its route, and the `id` in a path gets the name of what it is (`graphId`, `changeId`, `nodeId` or `edgeId`).
+- Routes that delete a graph or a change, or that apply or discard a proposal, are not tools. The user does those in the app.
+- The server refuses a request with an `Origin` that is not `localhost` or `127.0.0.1`, and a request that is not JSON, so a web page cannot call the tools.
+- Add it to Claude Code for every project with `claude mcp add --scope user --transport http Diagram http://127.0.0.1:4848/mcp`. The tools are then `mcp__Diagram__<tool>`. Diagram must run for the tools to work.
+
 ## Check
 
 ```bash

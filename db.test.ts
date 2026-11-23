@@ -688,6 +688,11 @@ describe("groups", () => {
     expect(() => store.createGroup(one, { name: "Bad", nodeIds: ["nope"] })).toThrow("The node nope is not in the graph.");
     expect(() => store.setNodeGroup(two, a, rules.id)).toThrow("The group does not exist in this graph.");
     expect(store.updateGroup(one, skills.id, { description: "Personal skills." }).name).toBe("Skills");
+    expect(skills.color).toBeNull();
+    expect(store.updateGroup(one, skills.id, { color: "green" }).color).toBe("green");
+    expect(store.updateGroup(one, skills.id, { name: "Skills" }).color).toBe("green");
+    expect(store.updateGroup(one, skills.id, { color: "#0a7f5e" }).color).toBe("#0a7f5e");
+    expect(store.updateGroup(one, skills.id, { color: null }).color).toBeNull();
 
     store.publish(one);
     store.deleteGroup(one, rules.id);

@@ -21,7 +21,7 @@ import {
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { assignParallelSlots, edgePath, LABEL_STOPS, labelSize, loopPath, placeLabels, pointAlong, routePath, snapRoute, type Box, type Label, type ParallelSlot, type Point } from "../geometry.ts";
 import { GROUP_PADDING, NODE_HEIGHT, NODE_WIDTH } from "../layout.ts";
-import type { ChangeStatus, ContentEdge, GraphContent, Position, Vocabulary } from "../model.ts";
+import { GROUP_COLORS, type ChangeStatus, type ContentEdge, type GraphContent, type Position, type Vocabulary } from "../model.ts";
 import { termName } from "../vocabulary.ts";
 import { NODE_TYPE_DRAG, NodePalette } from "./node-palette.tsx";
 import { useVocabulary } from "./vocabulary.ts";
@@ -32,11 +32,13 @@ export type Marks = { nodes: Map<string, ChangeStatus>; edges: Map<string, Chang
 
 // The path of a flow on the canvas: the step numbers of each node on it, and the edges it follows. For a run, the
 // path also has the node of the current step and the nodes and edges that the run did not reach yet.
-// The number of group colors in styles.css (--group-1 to --group-6). Groups take them in order.
-const GROUP_COLORS = 6;
+// A named color is a token in styles.css with a light and a dark shade. A group without a color takes the named colors
+// in order.
+const colorOf = (group: CanvasGroup, index: number) =>
+  group.color?.startsWith("#") === true ? group.color : `var(--group-${group.color ?? GROUP_COLORS[index % GROUP_COLORS.length]})`;
 
 // A group as the canvas draws it: a box around its nodes, with its name at the top.
-export type CanvasGroup = { id: string; name: string; description: string; nodeIds: string[] };
+export type CanvasGroup = { id: string; name: string; description: string; color: string | null; nodeIds: string[] };
 
 // The box of each group around the live positions of its nodes, so a box follows a node while it is dragged.
 const groupFrames = (groups: CanvasGroup[], nodes: EntityNode[]) =>
@@ -414,7 +416,7 @@ export const GraphCanvas = ({
                 transform: `translate(${frame.x}px, ${frame.y}px)`,
                 width: frame.width,
                 height: frame.height,
-                "--group-color": `var(--group-${(groups.findIndex(({ id }) => id === frame.id) % GROUP_COLORS) + 1})`,
+                "--group-color": colorOf(frame, groups.findIndex(({ id }) => id === frame.id)),
                 "--grow": grow,
               } as CSSProperties
             }

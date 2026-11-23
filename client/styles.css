@@ -22,12 +22,12 @@
   --changed: #d97706;
   --changed-soft: #fdf3e2;
   --open: #2563eb;
-  --group-1: #2563eb;
-  --group-2: #16a34a;
-  --group-3: #9333ea;
-  --group-4: #ea580c;
-  --group-5: #0891b2;
-  --group-6: #db2777;
+  --group-blue: #2563eb;
+  --group-green: #16a34a;
+  --group-purple: #9333ea;
+  --group-orange: #ea580c;
+  --group-cyan: #0891b2;
+  --group-pink: #db2777;
   --font: system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
@@ -57,12 +57,12 @@
     --changed: #fbbf24;
     --changed-soft: #3a2c14;
     --open: #60a5fa;
-    --group-1: #60a5fa;
-    --group-2: #4ade80;
-    --group-3: #c084fc;
-    --group-4: #fb923c;
-    --group-5: #22d3ee;
-    --group-6: #f472b6;
+    --group-blue: #60a5fa;
+    --group-green: #4ade80;
+    --group-purple: #c084fc;
+    --group-orange: #fb923c;
+    --group-cyan: #22d3ee;
+    --group-pink: #f472b6;
     color-scheme: dark;
   }
 }
@@ -1644,6 +1644,48 @@ button.link.danger {
 
 .group-label:hover {
   filter: brightness(1.1);
+}
+
+.color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid var(--panel);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--line);
+  cursor: pointer;
+}
+
+.swatch.current {
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+.swatch.auto {
+  width: auto;
+  padding: 0 8px;
+  border-radius: 12px;
+  background: var(--chip);
+  font-size: 11px;
+}
+
+.swatch.custom {
+  background: conic-gradient(#ef4444, #eab308, #22c55e, #06b6d4, #6366f1, #d946ef, #ef4444);
+  overflow: hidden;
+}
+
+.swatch.custom input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 /* The four views of a change. */

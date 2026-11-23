@@ -54,6 +54,10 @@ export type {
   Vocabulary,
 } from "./schemas.ts";
 
+// The named colors of groups. Each one has a light and a dark shade in client/styles.css (--group-<name>). A group can
+// also have a hex color, or no color: then it takes the named colors in order.
+export const GROUP_COLORS = ["blue", "green", "purple", "orange", "cyan", "pink"] as const;
+
 export const NODE_DESIGN_DEFAULTS = { type: null, intent: "", status: null };
 
 export const EDGE_DESIGN_DEFAULTS = { type: null, description: "", intent: "", status: null };

@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import type { Group, GroupInput } from "../model.ts";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { GROUP_COLORS, type Group, type GroupInput } from "../model.ts";
 import { NO_FILL, TextAreaField, TextField } from "./fields.tsx";
 import { PanelSection } from "./view-panel.tsx";
 
@@ -82,6 +82,52 @@ export const GroupsSection = ({
   );
 };
 
+const isHex = (color: string | null): color is string => color?.startsWith("#") === true;
+
+// Any color from the system color picker. The picker saves the color when it closes, not at each move, so a drag through
+// the colors does not save each one.
+const CustomColor = ({ value, onPick }: { value: string | null; onPick: (color: string) => void }) => {
+  const input = useRef<HTMLInputElement>(null);
+  const pick = useRef(onPick);
+  pick.current = onPick;
+  useEffect(() => {
+    const element = input.current;
+    const changed = () => element != null && pick.current(element.value);
+    element?.addEventListener("change", changed);
+    return () => element?.removeEventListener("change", changed);
+  }, []);
+  return (
+    <label className={`swatch custom${isHex(value) ? " current" : ""}`} style={isHex(value) ? { background: value } : undefined} title="Any color">
+      <input ref={input} type="color" defaultValue={isHex(value) ? value : "#888888"} aria-label="Any color" />
+    </label>
+  );
+};
+
+// The color of a group's box: Auto takes the named colors in the order of the groups.
+const ColorField = ({ value, onPick }: { value: string | null; onPick: (color: string | null) => void }) => (
+  <div className="field">
+    <span>Color</span>
+    <div className="color-swatches">
+      <button type="button" className={`swatch auto${value == null ? " current" : ""}`} onClick={() => onPick(null)} aria-pressed={value == null} title="Auto: the next color in order">
+        Auto
+      </button>
+      {GROUP_COLORS.map((name) => (
+        <button
+          key={name}
+          type="button"
+          className={`swatch${value === name ? " current" : ""}`}
+          style={{ background: `var(--group-${name})` }}
+          onClick={() => onPick(name)}
+          aria-pressed={value === name}
+          aria-label={name}
+          title={name}
+        />
+      ))}
+      <CustomColor key={value ?? "auto"} value={value} onPick={onPick} />
+    </div>
+  </div>
+);
+
 // One group: its name, its description and its nodes. In a published version it is read-only.
 export const GroupInspector = ({ group, members, readOnly, actions }: { group: Group; members: Member[]; readOnly: boolean; actions: GroupActions }) => (
   <section className="section">
@@ -100,6 +146,7 @@ export const GroupInspector = ({ group, members, readOnly, actions }: { group: G
           value={group.description}
           onCommit={(description) => actions.update(group.id, { description })}
         />
+        <ColorField value={group.color} onPick={(color) => actions.update(group.id, { color })} />
       </>
     )}
     <div className="field">

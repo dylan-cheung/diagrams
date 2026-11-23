@@ -353,7 +353,7 @@ export const Guide = () => {
               </li>
               <li>A node is in at most one group of a graph. In another graph, the same node can be in another group.</li>
               <li>
-                Click the name of a group on the canvas to edit it. <b>Auto layout</b> places the nodes of a group together.
+                Click the name of a group on the canvas to edit it and to pick its color. <b>Auto layout</b> places the nodes of a group together.
               </li>
             </ul>
           </Section>

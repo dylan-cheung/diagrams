@@ -159,10 +159,11 @@ export const GraphPage = ({ route }: { route: GraphRoute }) => {
   const groupView = readOnly ? shownVersion?.view : draft;
   const canvasGroups = useMemo(
     () =>
-      (groupView?.groups ?? []).map(({ id, name, description }) => ({
+      (groupView?.groups ?? []).map(({ id, name, description, color }) => ({
         id,
         name,
         description,
+        color,
         nodeIds: groupView?.nodes.filter((node) => node.groupId === id).map((node) => node.id) ?? [],
       })),
     [groupView],

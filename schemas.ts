@@ -1,5 +1,11 @@
 import { z } from "@hono/zod-openapi";
 import { PSEUDO_LAYERS } from "./change-items.ts";
+import { GROUP_COLORS } from "./model.ts";
+
+const GroupColor = z
+  .string()
+  .regex(new RegExp(`^(${GROUP_COLORS.join("|")}|#[0-9a-fA-F]{6})$`), { error: `A group color is one of ${GROUP_COLORS.join(", ")}, or a hex color such as #2563eb.` })
+  .openapi({ example: "green" });
 
 const Id = z.string().openapi({ example: "6343537c-28f9-4dd8-943d-ef9abfb1fddf" });
 
@@ -121,6 +127,7 @@ export const Group = z
     graphId: Id,
     name: z.string().openapi({ example: "~/.claude/CLAUDE.md" }),
     description: z.string().openapi({ example: "The rules that every Claude session loads, in every project." }),
+    color: GroupColor.nullable().openapi({ description: `The color of the box: ${GROUP_COLORS.join(", ")}, or a hex color. Null takes the named colors in the order of the groups.` }),
     createdAt: Timestamp,
     updatedAt: Timestamp,
   })
@@ -205,6 +212,7 @@ export const GroupInput = z
   .object({
     name: Name("A group needs a name."),
     description: z.string().optional().openapi({ example: "The rules that every Claude session loads, in every project." }),
+    color: GroupColor.nullable().optional().openapi({ description: `The color of the box: ${GROUP_COLORS.join(", ")}, or a hex color such as #2563eb. Null gives it a color from the order of the groups.` }),
     nodeIds: z
       .array(z.string().min(1))
       .optional()

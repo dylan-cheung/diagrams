@@ -102,13 +102,14 @@ type RunRow = {
 
 type PlacedNodeRow = NodeRow & { x: number | null; y: number | null; group_id: string | null };
 
-type GroupRow = { id: string; graph_id: string; name: string; description: string; created_at: string; updated_at: string };
+type GroupRow = { id: string; graph_id: string; name: string; description: string; color: string | null; created_at: string; updated_at: string };
 
 const toGroup = (row: GroupRow): Group => ({
   id: row.id,
   graphId: row.graph_id,
   name: row.name,
   description: row.description,
+  color: row.color,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -337,6 +338,7 @@ CREATE TABLE IF NOT EXISTS node_groups (
   graph_id TEXT NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
+  color TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -437,6 +439,7 @@ const ADDED_COLUMNS: [string, string, string][] = [
   ["edges", "intent", "TEXT NOT NULL DEFAULT ''"],
   ["edges", "status", "TEXT"],
   ["graph_edges", "route", "TEXT"],
+  ["node_groups", "color", "TEXT"],
   ["graph_nodes", "group_id", "TEXT REFERENCES node_groups(id) ON DELETE SET NULL"],
 ];
 
@@ -702,10 +705,17 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
   const saveGroup = (graphId: string, id: string, input: Partial<GroupInput>, before: Group | null) => {
     const stamp = now();
     db.query(
-      `INSERT INTO node_groups (id, graph_id, name, description, created_at, updated_at)
-       VALUES ($id, $graphId, $name, $description, $stamp, $stamp)
-       ON CONFLICT(id) DO UPDATE SET name = $name, description = $description, updated_at = $stamp`,
-    ).run({ id, graphId, name: input.name?.trim() ?? before?.name ?? "", description: input.description?.trim() ?? before?.description ?? "", stamp });
+      `INSERT INTO node_groups (id, graph_id, name, description, color, created_at, updated_at)
+       VALUES ($id, $graphId, $name, $description, $color, $stamp, $stamp)
+       ON CONFLICT(id) DO UPDATE SET name = $name, description = $description, color = $color, updated_at = $stamp`,
+    ).run({
+      id,
+      graphId,
+      name: input.name?.trim() ?? before?.name ?? "",
+      description: input.description?.trim() ?? before?.description ?? "",
+      color: input.color === undefined ? (before?.color ?? null) : input.color,
+      stamp,
+    });
     if (input.nodeIds != null) {
       db.query("UPDATE graph_nodes SET group_id = NULL WHERE graph_id = $graphId AND group_id = $id").run({ graphId, id });
       for (const nodeId of input.nodeIds) putInGroup(graphId, nodeId, id);
@@ -730,7 +740,7 @@ export const openGraphStore = (path: string, vocabulary: Vocabulary = DEFAULT_VO
         nodes: snapshot.nodes.map((node) => ({ ...NODE_DESIGN_DEFAULTS, ...node, groupId: node.groupId ?? null })),
         edges: snapshot.edges.map((edge) => ({ ...EDGE_DESIGN_DEFAULTS, ...edge, route: edge.route ?? null })),
         flows: snapshot.flows ?? [],
-        groups: snapshot.groups ?? [],
+        groups: (snapshot.groups ?? []).map((group) => ({ ...group, color: group.color ?? null })),
       },
     };
   };

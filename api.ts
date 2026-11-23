@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import { StoreError, type GraphStore } from "./db.ts";
+import { createMcp } from "./mcp.ts";
 import {
   AdvanceInput,
   ApplyInput,
@@ -745,7 +746,7 @@ export const createApi = (store: GraphStore) => {
       },
     );
 
-  app.doc31("/openapi.json", {
+  const doc = {
     openapi: "3.1.0",
     info: {
       title: "Diagram API",
@@ -753,8 +754,13 @@ export const createApi = (store: GraphStore) => {
       description:
         "The API of Diagram, an app that keeps and edits graphs. It uses the labeled property graph model. Nodes and edges are shared entities. A graph is a named subgraph that holds nodes, their positions, and edges. Each node and edge can have a type and a status from the design vocabulary, a description (what it is) and an intent (why it exists). A flow is a sequence of steps through a graph: one specific path, such as an edge case of a feature. A run is one instance of a flow on a published version. A published version is a copy of a graph, with its flows, that does not change. A proposal is a proposed graph that you compare with a version before you apply it. A change is one code change in four views (idea, concepts, pseudocode and code) with trace links between them. The Guide page of the app (/guide) explains each part.",
     },
-  });
+  };
+  app.doc31("/openapi.json", doc);
   app.get("/docs", Scalar({ url: "/openapi.json", pageTitle: "Diagram API", showDeveloperTools: "never" }));
+
+  // The MCP server for Claude. Its tools call the routes above.
+  const mcp = createMcp(app.getOpenAPI31Document(doc), (request) => app.fetch(request));
+  app.all("/mcp", (c) => mcp(c.req.raw));
 
   return routes;
 };
